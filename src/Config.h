@@ -6,7 +6,6 @@
 #define PIN_IMU_CS 5     // IMU chip select
 #define PIN_IMU_INT1 6
 #define PIN_IMU_INT2 4
-#define PIN_LED 38
 
 #define PIN_SDMMC_DAT0 8
 #define PIN_SDMMC_DAT1 18

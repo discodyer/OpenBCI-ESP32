@@ -5,7 +5,6 @@
 #include "ADS1299_Definitions.h"
 // todo
 
-// auto hspi = new SPIClass(HSPI);
 extern SPIClass * hspi;
 
 class ADS1299
@@ -96,6 +95,8 @@ public:
     void sendChannelData(void);
     // void sendChannelData(PACKET_TYPE);
     void sendChannelDataSerial();
+    void startHSPI(void);
+    void start();
 
     ~ADS1299();
 

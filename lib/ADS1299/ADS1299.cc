@@ -177,11 +177,8 @@ void ADS1299::initialize()
     pinMode(PIN_ADS_CS1, OUTPUT); // BOARD_ADS ChipSelect Pin
     pinMode(PIN_ADS_CS2, OUTPUT); // DAISY_ADS ChipSelect Pin
     csHigh(BOTH_ADS);
-
-    hspi->begin(PIN_SPI_SCLK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);
-    hspi->setFrequency(ADS_SPI_SPEED); // use 4MHz for ADS
-    hspi->setDataMode(SPI_MODE3);
-
+    
+    this->startHSPI();
     initialize_ads();
 }
 
@@ -672,7 +669,7 @@ void ADS1299::boardBeginADSInterrupt(void)
 {
     // 配置 DRDY 外部中断
     pinMode(PIN_ADS_DRDY, INPUT); // ADS data ready pin
-    attachInterrupt(PIN_ADS_DRDY, ADS_DRDY_Service, RISING);
+    attachInterrupt(PIN_ADS_DRDY, ADS_DRDY_Service, FALLING);
 }
 
 /// @brief CALLED WHEN DRDY PIN IS ASSERTED. NEW ADS DATA AVAILABLE!
@@ -893,6 +890,19 @@ void ADS1299::sendChannelData(void)
 void ADS1299::sendChannelDataSerial()
 {
     Serial0.println("Channel data sent");
+}
+
+void ADS1299::start()
+{
+    boardBeginADSInterrupt();
+    softReset();
+}
+
+void ADS1299::startHSPI(void)
+{
+    hspi->begin(PIN_SPI_SCLK, PIN_SPI_MISO, PIN_SPI_MOSI, -1);
+    hspi->setFrequency(ADS_SPI_SPEED); // use 4MHz for ADS
+    hspi->setDataMode(SPI_MODE3);
 }
 
 ADS1299::~ADS1299()

@@ -1,16 +1,25 @@
 #include <Arduino.h>
+#include <WiFi.h>
+#include <WiFiUdp.h>
+#include <ESPAsyncWebServer.h>
 #include "ADS1299.h"
 #include "Config.h"
+#include "WifiServer.h"
 
 SPIClass * hspi = NULL;
 
 ADS1299 ads1299;
+
+WiFiUDP clientUDP;
+WiFiClient clientTCP;
+
+AsyncWebServer server(80);
+
 void setup()
 {
     hspi = new SPIClass(HSPI);
     Serial0.begin(115200);
-    ads1299.boardBeginADSInterrupt();
-    ads1299.softReset();
+    ads1299.start();
     pinMode(PIN_LED, OUTPUT);
     pinMode(PIN_IMU_CS, OUTPUT);
     digitalWrite(PIN_LED, LOW);
