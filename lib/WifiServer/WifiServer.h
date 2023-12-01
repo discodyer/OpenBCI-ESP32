@@ -3,11 +3,15 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <time.h>
-#include <ESPAsyncWebServer.h>
+// #include <ESPAsyncWebServer.h>
 #include <WiFiUdp.h>
 #include "ADS1299.h"
 #include "OpenBCI_Wifi_Definitions.h"
 #include "Config.h"
+#include "ESP32SSDP.h"
+#include "ESPmDNS.h"
+
+#define DEBUG
 
 extern ADS1299 ads1299;
 extern AsyncWebServer server;
@@ -20,8 +24,8 @@ extern WiFiClient clientTCP;
 #endif
 
 #define PIN_LED 38
-#define WIFI_SSID "your-ssid"
-#define WIFI_PASSWD "your-password"
+#define WIFI_SSID "HUAWEI-AE86_Wi-Fi5"
+#define WIFI_PASSWD "20030717"
 
 class WifiServer
 {
@@ -60,6 +64,56 @@ public:
         CYTON_GAIN_12,
         CYTON_GAIN_24
     };
+
+    enum MULTI_CHAR_COMMAND
+    {
+        MULTI_CHAR_CMD_NONE,
+        MULTI_CHAR_CMD_PROCESSING_INCOMING_SETTINGS_CHANNEL,
+        MULTI_CHAR_CMD_PROCESSING_INCOMING_SETTINGS_LEADOFF,
+        MULTI_CHAR_CMD_SERIAL_PASSTHROUGH,
+        MULTI_CHAR_CMD_SETTINGS_BOARD_MODE,
+        MULTI_CHAR_CMD_SETTINGS_SAMPLE_RATE,
+        MULTI_CHAR_CMD_INSERT_MARKER
+    };
+
+    enum PACKET_TYPE
+    {
+        PACKET_TYPE_ACCEL,
+        PACKET_TYPE_RAW_AUX,
+        PACKET_TYPE_USER_DEFINED,
+        PACKET_TYPE_ACCEL_TIME_SET,
+        PACKET_TYPE_ACCEL_TIME_SYNC,
+        PACKET_TYPE_RAW_AUX_TIME_SET,
+        PACKET_TYPE_RAW_AUX_TIME_SYNC
+    };
+
+    enum TIME_SYNC_MODE
+    {
+        TIME_SYNC_MODE_ON,
+        TIME_SYNC_MODE_OFF
+    };
+
+    enum DEBUG_MODE
+    {
+        DEBUG_MODE_ON,
+        DEBUG_MODE_OFF
+    };
+
+    enum ACCEL_MODE
+    {
+        ACCEL_MODE_ON,
+        ACCEL_MODE_OFF
+    };
+    
+    enum BOARD_MODE {
+    BOARD_MODE_DEFAULT,
+    BOARD_MODE_DEBUG,
+    BOARD_MODE_ANALOG,
+    BOARD_MODE_DIGITAL,
+    BOARD_MODE_MARKER,
+    BOARD_MODE_BLE,
+    BOARD_MODE_END_OF_MODES  // This must be the last entry-insert any new board modes above this line
+  };
 
     // STRUCTS
 #ifdef RAW_TO_JSON
@@ -218,32 +272,69 @@ public:
     void debugPrintGet(AsyncWebServerRequest *request);
     void debugPrintPost(AsyncWebServerRequest *request);
     void sendHeadersForCORS(AsyncWebServerRequest *request);
+    void sendHeadersForCORS(AsyncWebServerRequest *request, int code, const String& contentType, const String& content);
+    AsyncWebServerResponse* addHeadersForCORS(AsyncWebServerRequest *request ,int code, const String& contentType, const String& content);
     void sendHeadersForOptions(AsyncWebServerRequest *request);
     void serverReturn(AsyncWebServerRequest *, int, String);
-    void returnOK(AsyncWebServerRequest *, String); 
+    void returnOK(AsyncWebServerRequest *, String);
     void returnOK(AsyncWebServerRequest *);
     void returnNoSPIMaster(AsyncWebServerRequest *request);
     void returnNoBodyInPost(AsyncWebServerRequest *request);
     void returnMissingRequiredParam(AsyncWebServerRequest *request, const char *err);
     void returnFail(AsyncWebServerRequest *request, int code, String msg);
-    JsonObject& getRequestParams(AsyncWebServerRequest *request);
+    JsonObject &getRequestParams(AsyncWebServerRequest *request);
     void requestWifiManagerStart(AsyncWebServerRequest *request);
-    JsonObject& getArgFromArgs(AsyncWebServerRequest *request, int args);
-    JsonObject& getArgFromArgs(AsyncWebServerRequest *request);
+    JsonObject &getArgFromArgs(AsyncWebServerRequest *request, int args);
+    JsonObject &getArgFromArgs(AsyncWebServerRequest *request);
     void setLatency(AsyncWebServerRequest *request);
     void passthroughCommand(AsyncWebServerRequest *request);
     void tcpSetup(AsyncWebServerRequest *request);
     void udpSetup(AsyncWebServerRequest *request);
     void removeWifiAPInfo(void);
 
+    boolean processChar(char character);
+    boolean checkMultiCharCmdTimer(void);
+    char getMultiCharCommand(void);
+    void processIncomingChannelSettings(char);
+    void processIncomingLeadOffSettings(char);
+    void processIncomingBoardMode(char);
+    void processIncomingSampleRate(char);
+    void processInsertMarker(char);
+    void startMultiCharCmdTimer(char cmd);
+    void setCurPacketType(void);
+    void endMultiCharCmdTimer(void);
+    char getChannelCommandForAsciiChar(char asciiChar);
+    char getNumberForAsciiChar(char asciiChar);
+    char getGainForAsciiChar(char asciiChar);
+
     ~WifiServer();
 
 private:
     // Variables
+
+    // OpenBCI command vars
+    char multiCharCommand; // The type of command
+    char currentChannelSetting;
+    boolean isMultiCharCmd;            // A multi char command is in progress
+    unsigned long multiCharCmdTimeout; // the timeout in millis of the current multi char command
+    int numberOfIncomingSettingsProcessedChannel;
+    int numberOfIncomingSettingsProcessedLeadOff;
+    int numberOfIncomingSettingsProcessedBoardType;
+    uint8_t optionalArgCounter;
+    char optionalArgBuffer7[7];
+    boolean newMarkerReceived;  // flag to indicate a new marker has been received
+    char markerValue;
+
+    TIME_SYNC_MODE curTimeSyncMode;
+    PACKET_TYPE curPacketType;
+    ACCEL_MODE curAccelMode;
+    BOARD_MODE curBoardMode;
+
+    // WebServer vars
     size_t _jsonBufferSize;
 
     uint8_t _gains[MAX_CHANNELS];
-    uint8_t curNumChannels;
+    // uint8_t curNumChannels;
 
     unsigned long _counter;
     unsigned long _latency;

@@ -97,6 +97,24 @@ public:
     void sendChannelDataSerial();
     void startHSPI(void);
     void start();
+    void streamSafeChannelDeactivate(byte channelNumber);
+    void streamStop();
+    void stopADS();
+    void streamStart();
+    void startADS();
+    void streamSafeChannelActivate(byte channelNumber);
+    void activateChannel(byte);
+    void activateAllChannelsToTestCondition(byte testInputCode, byte amplitudeCode, byte freqCode);
+    void configureInternalTestSignal(byte amplitudeCode, byte freqCode);
+    void changeInputType(byte inputCode);
+    void streamSafeSetAllChannelsToDefault(void);
+    void setChannelsToDefault(void);
+    void removeDaisy(void);
+    void streamSafeChannelSettingsForChannel(byte channelNumber, byte powerDown, byte gain, byte inputType, byte bias, byte srb2, byte srb1);
+    void streamSafeLeadOffSetForChannel(byte channelNumber, byte pInput, byte nInput);
+    void streamSafeSetSampleRate(SAMPLE_RATE sr);
+    char getDefaultChannelSettingForSettingAscii(byte setting);
+    byte getDefaultChannelSettingForSetting(byte setting);
 
     ~ADS1299();
 
@@ -110,12 +128,18 @@ private:
     void deactivateChannel(byte N);
     byte RREG(byte, ChipSelect targetSS);
     void WREG(byte, byte, ChipSelect); // write one ADS register
+    void STOP(ChipSelect targetSS);
+    void RDATAC(ChipSelect targetSS);
+    void START(ChipSelect targetSS);
+    void STANDBY(ChipSelect targetSS);
 
     // Variables
     boolean firstDataPacket;
     byte regData[24]; // array is used to mirror register data
     int boardStat;    // used to hold the status register
     int daisyStat;
+    boolean isRunning;
+
 
     // void printRegisterName(byte);
     // void printAll(char);

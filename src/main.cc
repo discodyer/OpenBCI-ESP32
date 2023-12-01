@@ -14,6 +14,7 @@ WiFiUDP clientUDP;
 WiFiClient clientTCP;
 
 AsyncWebServer server(80);
+WifiServer board;
 
 void setup()
 {
@@ -24,13 +25,14 @@ void setup()
     pinMode(PIN_IMU_CS, OUTPUT);
     digitalWrite(PIN_LED, LOW);
     digitalWrite(PIN_IMU_CS, HIGH);
+    board.begin();
 }
 
 void loop()
 {
     if(ads1299.channelDataAvailable)
     {
-        ads1299.updateBoardData();
+        ads1299.updateChannelData();
         ads1299.sendChannelData();
     }
 }
