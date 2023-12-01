@@ -3,18 +3,18 @@
 #include <WiFi.h>
 #include <ArduinoJson.h>
 #include <time.h>
-// #include <ESPAsyncWebServer.h>
 #include <WiFiUdp.h>
 #include "ADS1299.h"
 #include "OpenBCI_Wifi_Definitions.h"
 #include "Config.h"
 #include "ESP32SSDP.h"
 #include "ESPmDNS.h"
+#include "WebServer.h"
 
 #define DEBUG
 
 extern ADS1299 ads1299;
-extern AsyncWebServer server;
+extern WebServer server;
 extern WiFiClass WiFi;
 extern WiFiUDP clientUDP;
 extern WiFiClient clientTCP;
@@ -267,29 +267,26 @@ public:
     boolean connectToWiFi(const char *, const char *);
 
     // HTTP Rest Helpers
-    boolean noBodyInParam(AsyncWebServerRequest *request);
-    void debugPrintDelete(AsyncWebServerRequest *request);
-    void debugPrintGet(AsyncWebServerRequest *request);
-    void debugPrintPost(AsyncWebServerRequest *request);
-    void sendHeadersForCORS(AsyncWebServerRequest *request);
-    void sendHeadersForCORS(AsyncWebServerRequest *request, int code, const String& contentType, const String& content);
-    AsyncWebServerResponse* addHeadersForCORS(AsyncWebServerRequest *request ,int code, const String& contentType, const String& content);
-    void sendHeadersForOptions(AsyncWebServerRequest *request);
-    void serverReturn(AsyncWebServerRequest *, int, String);
-    void returnOK(AsyncWebServerRequest *, String);
-    void returnOK(AsyncWebServerRequest *);
-    void returnNoSPIMaster(AsyncWebServerRequest *request);
-    void returnNoBodyInPost(AsyncWebServerRequest *request);
-    void returnMissingRequiredParam(AsyncWebServerRequest *request, const char *err);
-    void returnFail(AsyncWebServerRequest *request, int code, String msg);
-    JsonObject &getRequestParams(AsyncWebServerRequest *request);
-    void requestWifiManagerStart(AsyncWebServerRequest *request);
-    JsonObject &getArgFromArgs(AsyncWebServerRequest *request, int args);
-    JsonObject &getArgFromArgs(AsyncWebServerRequest *request);
-    void setLatency(AsyncWebServerRequest *request);
-    void passthroughCommand(AsyncWebServerRequest *request);
-    void tcpSetup(AsyncWebServerRequest *request);
-    void udpSetup(AsyncWebServerRequest *request);
+    boolean noBodyInParam();
+    void debugPrintDelete();
+    void debugPrintGet();
+    void debugPrintPost();
+    void sendHeadersForCORS();
+    void sendHeadersForOptions();
+    void serverReturn(int, String);
+    void returnOK(String);
+    void returnOK();
+    void returnNoSPIMaster();
+    void returnNoBodyInPost();
+    void returnMissingRequiredParam(const char *err);
+    void returnFail(int code, String msg);
+    void requestWifiManagerStart();
+    JsonObject &getArgFromArgs(int args);
+    JsonObject &getArgFromArgs();
+    void setLatency();
+    void passthroughCommand();
+    void tcpSetup();
+    void udpSetup();
     void removeWifiAPInfo(void);
 
     boolean processChar(char character);
@@ -342,7 +339,7 @@ private:
 
     ADS1299 &_ads1299;
     HardwareSerial &_serial;
-    AsyncWebServer &_server;
+    // AsyncWebServer &_server;
     WiFiClass &_WiFi;
 
     boolean startWifiManager;

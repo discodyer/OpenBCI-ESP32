@@ -1,10 +1,10 @@
 #include <Arduino.h>
 #include <WiFi.h>
 #include <WiFiUdp.h>
-#include <ESPAsyncWebServer.h>
 #include "ADS1299.h"
 #include "Config.h"
 #include "WifiServer.h"
+#include "WebServer.h"
 
 SPIClass * hspi = NULL;
 
@@ -13,7 +13,7 @@ ADS1299 ads1299;
 WiFiUDP clientUDP;
 WiFiClient clientTCP;
 
-AsyncWebServer server(80);
+WebServer server(80);
 WifiServer board;
 
 void setup()
@@ -35,4 +35,5 @@ void loop()
         ads1299.updateChannelData();
         ads1299.sendChannelData();
     }
+    server.handleClient();
 }

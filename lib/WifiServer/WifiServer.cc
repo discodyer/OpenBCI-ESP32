@@ -5,7 +5,7 @@ WifiServer::WifiServer()
     : ledState(false), startWifiManager(false), tryConnectToAP(false), underSelfTest(false),
       wifiReset(false), lastHeadMove(0), lastSendToClient(0), ledFlashes(0), ledInterval(300),
       ledLastFlash(millis()), wifiConnectTimeout(millis()), jsonStr(""), bufferPosition(0),
-      buffer{}, _serial(Serial0), _ads1299(ads1299), _server(server), _WiFi(WiFi),
+      buffer{}, _serial(Serial0), _ads1299(ads1299), _WiFi(WiFi),
       curPacketType(PACKET_TYPE_ACCEL), curTimeSyncMode(TIME_SYNC_MODE_OFF),
       curAccelMode(ACCEL_MODE_OFF), currentChannelSetting(0), optionalArgBuffer7{},
       newMarkerReceived(false), markerValue(0)
@@ -400,10 +400,10 @@ void WifiServer::startWebServer(void)
     // printWifiStatus();
     _serial.printf("Starting HTTP...\n");
 #endif
-    _server.on(HTTP_ROUTE, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
     String ip = "10.0.0.1";
     String out = "<!DOCTYPE html><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><html lang=\"en\"><h1 style=\"margin:  auto;width: 90%;text-align: center;\">Push The World</h1><br>";
@@ -446,183 +446,169 @@ void WifiServer::startWebServer(void)
     out += "<p style=\"margin:  auto;width: 80%;text-align: center;\"> Please visit <a href='https://app.swaggerhub.com/apis/pushtheworld/openbci-wifi-server/2.0.0'>Swaggerhub</a> for the latest HTTP endpoints</p><br>";
     out += "<p style=\"margin:  auto;width: 80%;text-align: center;\"> Shield Firmware: " + String(SOFTWARE_VERSION) + "</p></html>";
 
-    request->send(200, "text/html", out);
-     });
+    server.send(200, "text/html", out); });
 
-    _server.on(HTTP_ROUTE, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
+    server.on(HTTP_ROUTE, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
 
-    _server.on("/description.xml", HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on("/description.xml", HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-                   _serial.println("SSDP HIT");
+    _serial.println("SSDP HIT");
 #endif
-                   // digitalWrite(PIN_LED, LOW);
-                   // SSDP.schema(request->client());
-                   // 发送响应
-                   request->send(200, "text/xml", SSDP.schema(false));
-                   // digitalWrite(PIN_LED, HIGH);
-               });
+    digitalWrite(PIN_LED, LOW);
+    SSDP.schema(server.client());
+    digitalWrite(PIN_LED, HIGH); });
 
     // Add other routes...
 
-    _server.on(HTTP_ROUTE_YT, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_YT, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
-        returnOK(request, "Keep going! Push The World!"); });
-    _server.on(HTTP_ROUTE_YT, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
+    returnOK("Keep going! Push The World!"); });
+    server.on(HTTP_ROUTE_YT, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
 
-    _server.on(HTTP_ROUTE_TCP, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_TCP, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-                   debugPrintGet(request);
+        debugPrintGet();
 #endif
-                   String out = getInfoTCP(clientTCP.connected());
+        sendHeadersForCORS();
+        String out = getInfoTCP(clientTCP.connected());
+        server.setContentLength(out.length());
+        server.send(200, "application/json", out.c_str()); });
 
-                   // _server.setContentLength(out.length());
-                   // _server.send(200, "application/json", out.c_str());
-                //    sendHeadersForCORS(request, 200, "application/json", out);
-                   request->send(200, "application/json", out);
-               });
-
-    _server.on(HTTP_ROUTE_TCP, HTTP_POST, [this](AsyncWebServerRequest *request)
-               { tcpSetup(request); });
-    _server.on(HTTP_ROUTE_TCP, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_TCP, HTTP_DELETE, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_TCP, HTTP_POST, [this]()
+              { tcpSetup(); });
+    server.on(HTTP_ROUTE_TCP, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
+    server.on(HTTP_ROUTE_TCP, HTTP_DELETE, [this]()
+              {
 #ifdef DEBUG
-    debugPrintDelete(request);
+    debugPrintDelete();
 #endif
+    sendHeadersForCORS();
     clientTCP.stop();
     setOutputProtocol(OUTPUT_PROTOCOL_NONE);
     jsonStr = getInfoTCP(false);
-    // server.setContentLength(jsonStr.length());
-    // server.send(200, "text/json", jsonStr.c_str());
-    // sendHeadersForCORS(request, 200, "text/json", jsonStr);
-
-    request->send(200, "text/json", jsonStr);
+    server.setContentLength(jsonStr.length());
+    server.send(200, "text/json", jsonStr.c_str());
     jsonStr = ""; });
 
-    _server.on(HTTP_ROUTE_UDP, HTTP_POST, [this](AsyncWebServerRequest *request)
-               { udpSetup(request); });
-    _server.on(HTTP_ROUTE_UDP, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_UDP, HTTP_DELETE, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_UDP, HTTP_POST, [this]()
+              { udpSetup(); });
+    server.on(HTTP_ROUTE_UDP, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
+    server.on(HTTP_ROUTE_UDP, HTTP_DELETE, [this]()
+              {
 #ifdef DEBUG
-    debugPrintDelete(request);
+    debugPrintDelete();
 #endif
+    sendHeadersForCORS();
     setOutputProtocol(OUTPUT_PROTOCOL_NONE);
     jsonStr = getInfoTCP(false);
-    // server.setContentLength(jsonStr.length());
-    // server.send(200, RETURN_TEXT_JSON, jsonStr.c_str());
-    request->send(200, RETURN_TEXT_JSON, jsonStr);
-    // sendHeadersForCORS(request, 200, RETURN_TEXT_JSON, jsonStr);
+    server.setContentLength(jsonStr.length());
+    server.send(200, RETURN_TEXT_JSON, jsonStr.c_str());
     jsonStr = ""; });
     // These could be helpful...
-    _server.on(HTTP_ROUTE_STREAM_START, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_STREAM_START, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
-    // if (!spiHasMaster()) return returnNoSPIMaster(request);
+    if (!spiHasMaster()) {return returnNoSPIMaster();}
     passthroughCommands("b");
     // SPISlave.setData(wifi.passthroughBuffer, BYTES_PER_SPI_PACKET);
-    returnOK(request); });
+    returnOK(); });
+    server.on(HTTP_ROUTE_STREAM_START, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
 
-    _server.on(HTTP_ROUTE_STREAM_START, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_STREAM_STOP, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_STREAM_STOP, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
-    // if (!spiHasMaster()) return returnNoSPIMaster();
+    if (!spiHasMaster()) {return returnNoSPIMaster();}
     passthroughCommands("s");
     // SPISlave.setData(wifi.passthroughBuffer, BYTES_PER_SPI_PACKET);
-    returnOK(request); });
+    returnOK(); });
+    server.on(HTTP_ROUTE_STREAM_STOP, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
 
-    _server.on(HTTP_ROUTE_STREAM_STOP, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_VERSION, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_VERSION, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
-    returnOK(request, getVersion()); });
+    returnOK(getVersion()); });
 
-    _server.on(HTTP_ROUTE_VERSION, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
+    server.on(HTTP_ROUTE_VERSION, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
 
-    _server.on(HTTP_ROUTE_COMMAND, HTTP_POST, [this](AsyncWebServerRequest *request)
-               { passthroughCommand(request); });
-    _server.on(HTTP_ROUTE_COMMAND, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_LATENCY, HTTP_GET, [this](AsyncWebServerRequest *request)
-               { returnOK(request, String(getLatency())); });
-    _server.on(HTTP_ROUTE_LATENCY, HTTP_POST, [this](AsyncWebServerRequest *request)
-               { setLatency(request); });
-    _server.on(HTTP_ROUTE_LATENCY, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
+    server.on(HTTP_ROUTE_COMMAND, HTTP_POST, [this]()
+              { passthroughCommand(); });
+    server.on(HTTP_ROUTE_COMMAND, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
+    server.on(HTTP_ROUTE_LATENCY, HTTP_GET, [this]()
+              { returnOK(String(getLatency()).c_str()); });
+
+    server.on(HTTP_ROUTE_LATENCY, HTTP_POST, [this]()
+              { setLatency(); });
+    server.on(HTTP_ROUTE_LATENCY, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
 
     // get heap status, analog input value and all GPIO statuses in one json call
-    _server.on(HTTP_ROUTE_ALL, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_ALL, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
+    sendHeadersForCORS();
     String output = getInfoAll();
-    // server.setContentLength(output.length());
-    // server.send(200, RETURN_TEXT_JSON, output);
-    request->send(200, RETURN_TEXT_JSON, output);
-    // sendHeadersForCORS(request, 200, RETURN_TEXT_JSON, output); 
-    });
-    _server.on(HTTP_ROUTE_ALL, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_BOARD, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.setContentLength(output.length());
+    server.send(200, RETURN_TEXT_JSON, output); });
+    server.on(HTTP_ROUTE_ALL, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
+    server.on(HTTP_ROUTE_BOARD, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
+    sendHeadersForCORS();
     String output = getInfoBoard();
-    // server.setContentLength(output.length());
-    // server.send(200, RETURN_TEXT_JSON, output);
-    request->send(200, RETURN_TEXT_JSON, output);
-    // sendHeadersForCORS(request, 200, RETURN_TEXT_JSON, output); });
-    // sendHeadersForCORS(request, 200, RETURN_TEXT_JSON, output); 
-    });
-    _server.on(HTTP_ROUTE_BOARD, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_WIFI, HTTP_GET, [this](AsyncWebServerRequest *request)
-               { requestWifiManagerStart(request); });
-    _server.on(HTTP_ROUTE_WIFI, HTTP_DELETE, [this](AsyncWebServerRequest *request)
-               {
+    server.setContentLength(output.length());
+    server.send(200, RETURN_TEXT_JSON, output); });
+    server.on(HTTP_ROUTE_BOARD, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
+    server.on(HTTP_ROUTE_WIFI, HTTP_GET, [this]()
+              { requestWifiManagerStart(); });
+    server.on(HTTP_ROUTE_WIFI, HTTP_DELETE, [this]()
+              {
 #ifdef DEBUG
-    debugPrintDelete(request);
+    debugPrintDelete();
 #endif
-    returnOK(request, "Reseting wifi. Please power cycle your board in 10 seconds");
+    returnOK("Reseting wifi. Please power cycle your board in 10 seconds");
     wifiReset = true; });
-    _server.on(HTTP_ROUTE_WIFI, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
+    server.on(HTTP_ROUTE_WIFI, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
 
-    _server.on(HTTP_ROUTE_WIFI_CONFIG, HTTP_GET, [this](AsyncWebServerRequest *request)
-               { requestWifiManagerStart(request); });
-    _server.on(HTTP_ROUTE_WIFI_CONFIG, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
-    _server.on(HTTP_ROUTE_WIFI_DELETE, HTTP_GET, [this](AsyncWebServerRequest *request)
-               {
+    server.on(HTTP_ROUTE_WIFI_CONFIG, HTTP_GET, [this]()
+              { requestWifiManagerStart(); });
+    server.on(HTTP_ROUTE_WIFI_CONFIG, HTTP_OPTIONS, [this]()
+              { sendHeadersForOptions(); });
+    server.on(HTTP_ROUTE_WIFI_DELETE, HTTP_GET, [this]()
+              {
 #ifdef DEBUG
-    debugPrintDelete(request);
+    debugPrintDelete();
 #endif
-    returnOK(request, "Reseting wifi. Please power cycle your board in 10 seconds");
+    returnOK("Reseting wifi. Please power cycle your board in 10 seconds");
     wifiReset = true;
     digitalWrite(PIN_LED, LOW); });
-    _server.on(HTTP_ROUTE_WIFI_DELETE, HTTP_OPTIONS, [this](AsyncWebServerRequest *request)
-               { sendHeadersForOptions(request); });
+    server.on(HTTP_ROUTE_WIFI_DELETE, HTTP_OPTIONS, [this]()
+              {  sendHeadersForOptions(); });
 
     if (!MDNS.begin(getName().c_str()))
     {
@@ -639,17 +625,14 @@ void WifiServer::startWebServer(void)
     }
 
     // Set up not found route
-    _server.onNotFound([this](AsyncWebServerRequest *request)
-                       {
+    server.onNotFound([this]()
+                      {
 #ifdef DEBUG
-    _serial.printf("HTTP NOT FOUND :%s", request->url());
+    _serial.printf("HTTP NOT FOUND :%s", server.uri());
 #endif
-    request->send(404, "text/plain", "404 Not Found");
-     });
+        returnFail(404, "Route Not Found"); });
     // Start the server
-    DefaultHeaders::Instance().addHeader("Access-Control-Allow-Origin", "*");
-    _server.begin();
-
+    server.begin();
     MDNS.addService("http", "tcp", 80);
 
 #ifdef DEBUG
@@ -688,114 +671,98 @@ boolean WifiServer::connectToWiFi(const char *ssid, const char *password)
     }
 }
 
-boolean WifiServer::noBodyInParam(AsyncWebServerRequest *request)
+boolean WifiServer::noBodyInParam()
 {
-    return request->args() == 0;
+    return server.args() == 0;
 }
 
-void WifiServer::debugPrintDelete(AsyncWebServerRequest *request)
+void WifiServer::debugPrintDelete()
 {
-    _serial.printf("HTTP DELETE %s HEAP: %u\n", request->url().c_str(), ESP.getFreeHeap());
+    _serial.printf("HTTP DELETE %s HEAP: %u\n", server.uri(), ESP.getFreeHeap());
 }
 
-void WifiServer::debugPrintGet(AsyncWebServerRequest *request)
+void WifiServer::debugPrintGet()
 {
-    _serial.printf("HTTP GET %s HEAP: %u\n", request->url().c_str(), ESP.getFreeHeap());
+    _serial.printf("HTTP GET %s HEAP: %u\n", server.uri(), ESP.getFreeHeap());
 }
 
-void WifiServer::debugPrintPost(AsyncWebServerRequest *request)
+void WifiServer::debugPrintPost()
 {
-    _serial.printf("HTTP POST %s HEAP: %u\n", request->url().c_str(), ESP.getFreeHeap());
+    _serial.printf("HTTP POST %s HEAP: %u\n", server.uri(), ESP.getFreeHeap());
 }
 
-void WifiServer::sendHeadersForCORS(AsyncWebServerRequest *request)
+void WifiServer::sendHeadersForCORS()
 {
-    AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    request->send(response);
+    server.sendHeader("Access-Control-Allow-Origin", "*");
 }
 
-void WifiServer::sendHeadersForCORS(AsyncWebServerRequest *request, int code, const String &contentType, const String &content)
+void WifiServer::sendHeadersForOptions()
 {
-    request->send(addHeadersForCORS(request, code, contentType, content));
+    server.sendHeader("Access-Control-Allow-Origin", "*");
+    server.sendHeader("Access-Control-Allow-Methods", "POST,DELETE,GET,OPTIONS");
+    server.sendHeader("Access-Control-Allow-Headers", "Content-Type");
+    server.send(200, "text/plain", "");
 }
 
-AsyncWebServerResponse *WifiServer::addHeadersForCORS(AsyncWebServerRequest *request, int code, const String &contentType, const String &content)
-{
-    AsyncWebServerResponse *response = request->beginResponse(code, contentType, content);
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    return response;
-}
-
-void WifiServer::sendHeadersForOptions(AsyncWebServerRequest *request)
-{
-    AsyncWebServerResponse *response = request->beginResponse(200, "text/plain", "");
-    response->addHeader("Access-Control-Allow-Origin", "*");
-    response->addHeader("Access-Control-Allow-Methods", "POST,DELETE,GET,OPTIONS");
-    response->addHeader("Access-Control-Allow-Headers", "Content-Type");
-    request->send(response);
-}
-
-void WifiServer::serverReturn(AsyncWebServerRequest *request, int code, String s)
+void WifiServer::serverReturn(int code, String s)
 {
     digitalWrite(PIN_LED, LOW);
-    // AsyncWebServerResponse *response = request->beginResponse(code, "text/plain", s + "\r\n");
-    // request->send(response);
-    request->send(code, "text/plain", s + "\r\n");
-    // sendHeadersForCORS(request, code, "text/plain", s + "\r\n");
+    sendHeadersForCORS();
+    server.send(code, "text/plain", s + "\r\n");
     digitalWrite(PIN_LED, HIGH);
 }
 
-void WifiServer::returnOK(AsyncWebServerRequest *request, String s)
+void WifiServer::returnOK(String s)
 {
-    serverReturn(request, 200, s);
+    serverReturn(200, s);
 }
 
-void WifiServer::returnOK(AsyncWebServerRequest *request)
+void WifiServer::returnOK()
 {
-    returnOK(request, "OK");
+    returnOK("OK");
 }
 
 /// @brief Used to send a response to the client that the board is not attached.
 /// @param
-void WifiServer::returnNoSPIMaster(AsyncWebServerRequest *request)
+void WifiServer::returnNoSPIMaster()
 {
     if (lastTimeWasPolled < 1)
     {
-        serverReturn(request, SPI_NO_MASTER, "Error: No OpenBCI board attached");
+        serverReturn(SPI_NO_MASTER, "Error: No OpenBCI board attached");
     }
     else
     {
-        serverReturn(request, SPI_TIMEOUT_CLIENT_RESPONSE, "Error: Lost communication with OpenBCI board");
+        serverReturn(SPI_TIMEOUT_CLIENT_RESPONSE, "Error: Lost communication with OpenBCI board");
     }
 }
 
 /// @brief Used to send a response to the client that there is no body in the post request.
 /// @param request
-void WifiServer::returnNoBodyInPost(AsyncWebServerRequest *request)
+void WifiServer::returnNoBodyInPost()
 {
-    serverReturn(request, CLIENT_RESPONSE_NO_BODY_IN_POST, "Error: No body in POST request");
+    serverReturn(CLIENT_RESPONSE_NO_BODY_IN_POST, "Error: No body in POST request");
 }
 
 /// @brief Return if there is a missing param in the required command
 /// @param request
 /// @param err
-void WifiServer::returnMissingRequiredParam(AsyncWebServerRequest *request, const char *err)
+void WifiServer::returnMissingRequiredParam(const char *err)
 {
-    serverReturn(request, CLIENT_RESPONSE_MISSING_REQUIRED_CMD, String(err));
+    serverReturn(CLIENT_RESPONSE_MISSING_REQUIRED_CMD, String(err));
 }
 
-void WifiServer::returnFail(AsyncWebServerRequest *request, int code, String msg)
+void WifiServer::returnFail(int code, String msg)
 {
-    serverReturn(request, code, msg);
+    serverReturn(code, msg);
 }
 
-JsonObject &WifiServer::getArgFromArgs(AsyncWebServerRequest *request, int args)
+JsonObject &WifiServer::getArgFromArgs(int args)
 {
     DynamicJsonDocument jsonDoc(JSON_OBJECT_SIZE(args) + (40 * args));
 
     // 使用 deserializeJson 函数解析 JSON 字符串
-    DeserializationError error = deserializeJson(jsonDoc, request->arg((size_t)0));
+    DeserializationError error = deserializeJson(jsonDoc, server.arg(0));
+    _serial.printf(server.arg(0).c_str());
 
     // 检查是否解析成功
     if (error)
@@ -804,20 +771,21 @@ JsonObject &WifiServer::getArgFromArgs(AsyncWebServerRequest *request, int args)
         _serial.println(error.c_str());
     }
 
-    _root = jsonDoc.to<JsonObject>();
+    _root = jsonDoc.as<JsonObject>();
     return _root;
 }
 
-JsonObject &WifiServer::getArgFromArgs(AsyncWebServerRequest *request)
+JsonObject &WifiServer::getArgFromArgs()
 {
-    return getArgFromArgs(request, 1);
+    return getArgFromArgs(1);
 }
 
-void WifiServer::requestWifiManagerStart(AsyncWebServerRequest *request)
+void WifiServer::requestWifiManagerStart()
 {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
+    sendHeadersForCORS();
     // 构建 HTML 响应
     String out = "<!DOCTYPE html><meta name=\"viewport\" content=\"width=device-width, initial-scale=1.0\"><html lang=\"en\"><h1 style=\"margin:  auto;width: 80%;text-align: center;\">Push The World</h1><br><p style=\"margin:  auto;width: 80%;text-align: center;\"><a href='http://";
 
@@ -836,8 +804,7 @@ void WifiServer::requestWifiManagerStart(AsyncWebServerRequest *request)
     out += "'>Click to Go To WiFi Manager</a></p><html>";
 
     // 发送 HTML 响应
-    request->send(200, "text/html", out);
-    // sendHeadersForCORS(request, 200, "text/html", out);
+    server.send(200, "text/html", out);
 
     // 设置 LED 闪烁
     ledFlashes = 5;
@@ -849,25 +816,25 @@ void WifiServer::requestWifiManagerStart(AsyncWebServerRequest *request)
 
 /// @brief Used to set the latency of the system.
 /// @param request
-void WifiServer::setLatency(AsyncWebServerRequest *request)
+void WifiServer::setLatency()
 {
-    if (noBodyInParam(request))
+    if (noBodyInParam())
     {
-        return returnNoBodyInPost(request);
+        return returnNoBodyInPost();
     }
 
-    JsonObject &root = getArgFromArgs(request);
+    JsonObject &root = getArgFromArgs();
 
     // 检查是否包含 JSON_LATENCY 键
     if (root.containsKey(JSON_LATENCY) && root[JSON_LATENCY].is<unsigned long>())
     {
         // 从 JSON 对象中获取 JSON_LATENCY 的值，并设置 Latency
         setLatency(static_cast<unsigned long>(root[JSON_LATENCY]));
-        returnOK(request);
+        returnOK();
     }
     else
     {
-        returnMissingRequiredParam(request, JSON_LATENCY);
+        returnMissingRequiredParam(JSON_LATENCY);
     }
 }
 
@@ -875,18 +842,18 @@ WifiServer::~WifiServer()
 {
 }
 
-void WifiServer::passthroughCommand(AsyncWebServerRequest *request)
+void WifiServer::passthroughCommand()
 {
-    if (noBodyInParam(request))
+    if (noBodyInParam())
     {
-        return returnNoBodyInPost(request);
+        return returnNoBodyInPost();
     }
-    if (spiHasMaster())
+    if (!spiHasMaster())
     {
-        return returnNoSPIMaster(request);
+        return returnNoSPIMaster();
     }
 
-    JsonObject &root = getArgFromArgs(request);
+    JsonObject &root = getArgFromArgs();
 #ifdef DEBUG
     // root.printTo(_serial);
 #endif
@@ -900,47 +867,47 @@ void WifiServer::passthroughCommand(AsyncWebServerRequest *request)
             switch (retVal)
             {
             case PASSTHROUGH_FAIL_TOO_MANY_CHARS:
-                return returnFail(request, 501, "Error: Sent more than 31 chars");
+                return returnFail(501, "Error: Sent more than 31 chars");
             case PASSTHROUGH_FAIL_NO_CHARS:
-                return returnFail(request, 505, "Error: No characters found for key 'command'");
+                return returnFail(505, "Error: No characters found for key 'command'");
             case PASSTHROUGH_FAIL_QUEUE_FILLED:
-                return returnFail(request, 503, "Error: Queue is full, please wait 20ms and try again.");
+                return returnFail(503, "Error: Queue is full, please wait 20ms and try again.");
             default:
-                return returnFail(request, 504, "Error: Unknown error");
+                return returnFail(504, "Error: Unknown error");
             }
         }
         return;
     }
     else
     {
-        return returnMissingRequiredParam(request, JSON_COMMAND);
+        return returnMissingRequiredParam(JSON_COMMAND);
     }
 }
 
-void WifiServer::tcpSetup(AsyncWebServerRequest *request)
+void WifiServer::tcpSetup()
 {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
     // Parse args
-    if (noBodyInParam(request))
+    if (noBodyInParam())
     {
-        return returnNoBodyInPost(request); // no body
+        return returnNoBodyInPost(); // no body
     }
-    JsonObject &root = getArgFromArgs(request, 8);
+    JsonObject &root = getArgFromArgs(8);
     if (!root.containsKey(JSON_TCP_IP))
     {
-        return returnMissingRequiredParam(request, JSON_TCP_IP);
+        return returnMissingRequiredParam(JSON_TCP_IP);
     }
     String tempAddr = root[JSON_TCP_IP];
     IPAddress tempIPAddr;
     if (!tempIPAddr.fromString(tempAddr))
     {
-        return returnFail(request, 505, "Error: unable to parse ip address. Please send as string in octets i.e. xxx.xxx.xxx.xxx");
+        return returnFail(505, "Error: unable to parse ip address. Please send as string in octets i.e. xxx.xxx.xxx.xxx");
     }
     if (!root.containsKey(JSON_TCP_PORT))
     {
-        return returnMissingRequiredParam(request, JSON_TCP_PORT);
+        return returnMissingRequiredParam(JSON_TCP_PORT);
     }
     int port = root[JSON_TCP_PORT];
     if (root.containsKey(JSON_TCP_OUTPUT))
@@ -956,7 +923,7 @@ void WifiServer::tcpSetup(AsyncWebServerRequest *request)
         }
         else
         {
-            return returnFail(request, 506, "Error: '" + String(JSON_TCP_OUTPUT) + "' must be either " + getOutputModeString(OUTPUT_MODE_RAW) + " or " + getOutputModeString(OUTPUT_MODE_JSON));
+            return returnFail(506, "Error: '" + String(JSON_TCP_OUTPUT) + "' must be either " + getOutputModeString(OUTPUT_MODE_RAW) + " or " + getOutputModeString(OUTPUT_MODE_JSON));
         }
 #ifdef DEBUG
         _serial.print("Set output mode to ");
@@ -1018,8 +985,8 @@ void WifiServer::tcpSetup(AsyncWebServerRequest *request)
     _serial.println(tcpAddress.toString());
     _serial.print("Got port: ");
     _serial.println(tcpPort);
-    _serial.print("Current url: ");
-    _serial.println(request->url());
+    _serial.print("Current uri: ");
+    _serial.println(server.uri());
     _serial.print("Starting socket to host: ");
     _serial.print(tcpAddress.toString());
     _serial.print(" on port: ");
@@ -1031,6 +998,8 @@ void WifiServer::tcpSetup(AsyncWebServerRequest *request)
     // const size_t bufferSize = JSON_OBJECT_SIZE(6) + 40*6;
     // DynamicJsonBuffer jsonBuffer(bufferSize);
     // JsonObject& rootOut = jsonBuffer.createObject();
+    sendHeadersForCORS();
+
     if (clientTCP.connect(tcpAddress, tcpPort))
     {
 #ifdef DEBUG
@@ -1038,11 +1007,8 @@ void WifiServer::tcpSetup(AsyncWebServerRequest *request)
 #endif
         clientTCP.setNoDelay(1);
         jsonStr = getInfoTCP(true);
-        // jsonStr = "";
-        // rootOut.printTo(jsonStr);
-        // server.setContentLength(jsonStr.length());
-        request->send(200, RETURN_TEXT_JSON, jsonStr);
-        // sendHeadersForCORS(request, 200, RETURN_TEXT_JSON, jsonStr);
+        server.setContentLength(jsonStr.length());
+        return server.send(200, RETURN_TEXT_JSON, jsonStr.c_str());
     }
     else
     {
@@ -1050,38 +1016,35 @@ void WifiServer::tcpSetup(AsyncWebServerRequest *request)
         _serial.println("Failed to connect to server");
 #endif
         jsonStr = getInfoTCP(false);
-        // jsonStr = "";
-        // rootOut.printTo(jsonStr);
-        // server.setContentLength(jsonStr.length());
-        request->send(504, RETURN_TEXT_JSON, jsonStr);
-        // sendHeadersForCORS(request, 200, RETURN_TEXT_JSON, jsonStr);
+        server.setContentLength(jsonStr.length());
+        return server.send(504, RETURN_TEXT_JSON, jsonStr.c_str());
     }
 }
 
-void WifiServer::udpSetup(AsyncWebServerRequest *request)
+void WifiServer::udpSetup()
 {
 #ifdef DEBUG
-    debugPrintGet(request);
+    debugPrintGet();
 #endif
     // Parse args
-    if (noBodyInParam(request))
+    if (noBodyInParam())
     {
-        return returnNoBodyInPost(request); // no body
+        return returnNoBodyInPost(); // no body
     }
-    JsonObject &root = getArgFromArgs(request, 7);
+    JsonObject &root = getArgFromArgs(7);
     if (!root.containsKey(JSON_TCP_IP))
     {
-        return returnMissingRequiredParam(request, JSON_TCP_IP);
+        return returnMissingRequiredParam(JSON_TCP_IP);
     }
     String tempAddr = root[JSON_TCP_IP];
     IPAddress tempIPAddr;
     if (!tempIPAddr.fromString(tempAddr))
     {
-        return returnFail(request, 505, "Error: unable to parse ip address. Please send as string in octets i.e. xxx.xxx.xxx.xxx");
+        return returnFail(505, "Error: unable to parse ip address. Please send as string in octets i.e. xxx.xxx.xxx.xxx");
     }
     if (!root.containsKey(JSON_TCP_PORT))
     {
-        return returnMissingRequiredParam(request, JSON_TCP_PORT);
+        return returnMissingRequiredParam(JSON_TCP_PORT);
     }
     int port = root[JSON_TCP_PORT];
 
@@ -1099,7 +1062,7 @@ void WifiServer::udpSetup(AsyncWebServerRequest *request)
         }
         else
         {
-            return returnFail(request, 506, "Error: '" + String(JSON_TCP_OUTPUT) + "' must be either " + getOutputModeString(OUTPUT_MODE_RAW) + " or " + getOutputModeString(OUTPUT_MODE_JSON));
+            return returnFail(506, "Error: '" + String(JSON_TCP_OUTPUT) + "' must be either " + getOutputModeString(OUTPUT_MODE_RAW) + " or " + getOutputModeString(OUTPUT_MODE_JSON));
         }
 #ifdef DEBUG
         _serial.print("Set output mode to ");
@@ -1143,17 +1106,16 @@ void WifiServer::udpSetup(AsyncWebServerRequest *request)
     _serial.println(tcpAddress.toString());
     _serial.print("Got port: ");
     _serial.println(tcpPort);
-    _serial.print("Current url: ");
-    _serial.println(request->url());
+    _serial.print("Current uri: ");
+    _serial.println(server.uri());
     _serial.print("Ready to write to: ");
     _serial.print(tcpAddress.toString());
     _serial.print(" on port: ");
     _serial.println(tcpPort);
 #endif
 
-    jsonStr = "";
-    request->send(200, "text/json", jsonStr.c_str());
-    // sendHeadersForCORS(request, 200, "text/json", jsonStr.c_str());
+    sendHeadersForCORS();
+    return server.send(200, "text/json", jsonStr.c_str());
 }
 
 void WifiServer::removeWifiAPInfo(void)
