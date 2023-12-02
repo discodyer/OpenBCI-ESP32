@@ -1,11 +1,7 @@
 #pragma once
 #include "Config.h"
 #include <Arduino.h>
-#include <SPI.h>
 #include "ADS1299_Definitions.h"
-// todo
-
-extern SPIClass * hspi;
 
 class ADS1299
 {
@@ -115,6 +111,9 @@ public:
     void streamSafeSetSampleRate(SAMPLE_RATE sr);
     char getDefaultChannelSettingForSettingAscii(byte setting);
     byte getDefaultChannelSettingForSetting(byte setting);
+    // void printfWifi(const char *format, ...);
+    // void printlnWifi(const char *msg);
+    // void printWifi(const char *msg);
 
     ~ADS1299();
 

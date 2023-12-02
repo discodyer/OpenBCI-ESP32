@@ -1,5 +1,8 @@
 #include <WiFi.h>
 #include "WifiServer.h"
+#include "ADS1299.h"
+
+extern ADS1299 ads1299;
 
 WifiServer::WifiServer()
     : ledState(false), startWifiManager(false), tryConnectToAP(false), underSelfTest(false),
@@ -454,11 +457,12 @@ void WifiServer::startWebServer(void)
     server.on("/description.xml", HTTP_GET, [this]()
               {
 #ifdef DEBUG
-    _serial.println("SSDP HIT");
+                  _serial.println("SSDP HIT");
 #endif
-    digitalWrite(PIN_LED, LOW);
-    SSDP.schema(server.client());
-    digitalWrite(PIN_LED, HIGH); });
+                  digitalWrite(PIN_LED, LOW); // 指示灯亮
+                  SSDP.schema(server.client());
+                  digitalWrite(PIN_LED, HIGH); // 指示灯灭
+              });
 
     // Add other routes...
 
@@ -602,13 +606,14 @@ void WifiServer::startWebServer(void)
     server.on(HTTP_ROUTE_WIFI_DELETE, HTTP_GET, [this]()
               {
 #ifdef DEBUG
-    debugPrintDelete();
+                  debugPrintDelete();
 #endif
-    returnOK("Reseting wifi. Please power cycle your board in 10 seconds");
-    wifiReset = true;
-    digitalWrite(PIN_LED, LOW); });
+                  returnOK("Reseting wifi. Please power cycle your board in 10 seconds");
+                  wifiReset = true;
+                  digitalWrite(PIN_LED, LOW); // 指示灯亮
+              });
     server.on(HTTP_ROUTE_WIFI_DELETE, HTTP_OPTIONS, [this]()
-              {  sendHeadersForOptions(); });
+              { sendHeadersForOptions(); });
 
     if (!MDNS.begin(getName().c_str()))
     {
@@ -706,10 +711,10 @@ void WifiServer::sendHeadersForOptions()
 
 void WifiServer::serverReturn(int code, String s)
 {
-    digitalWrite(PIN_LED, LOW);
+    digitalWrite(PIN_LED, LOW); // 指示灯亮
     sendHeadersForCORS();
     server.send(code, "text/plain", s + "\r\n");
-    digitalWrite(PIN_LED, HIGH);
+    digitalWrite(PIN_LED, HIGH); // 指示灯灭
 }
 
 void WifiServer::returnOK(String s)
@@ -762,7 +767,6 @@ JsonObject &WifiServer::getArgFromArgs(int args)
 
     // 使用 deserializeJson 函数解析 JSON 字符串
     DeserializationError error = deserializeJson(jsonDoc, server.arg(0));
-    _serial.printf(server.arg(0).c_str());
 
     // 检查是否解析成功
     if (error)
@@ -854,9 +858,6 @@ void WifiServer::passthroughCommand()
     }
 
     JsonObject &root = getArgFromArgs();
-#ifdef DEBUG
-    // root.printTo(_serial);
-#endif
 
     if (root.containsKey(JSON_COMMAND))
     {
@@ -1141,6 +1142,9 @@ void WifiServer::removeWifiAPInfo(void)
 /// @return          {boolean} - `true` if the command was recognized, `false` if not
 boolean WifiServer::processChar(char character)
 {
+#ifdef DEBUG
+    _serial.printf("pC:%c\n", character);
+#endif
     if (checkMultiCharCmdTimer())
     { // we are in a multi char command
         switch (getMultiCharCommand())
@@ -1300,15 +1304,11 @@ boolean WifiServer::processChar(char character)
             break;
 
         case OPENBCI_CHANNEL_DEFAULT_ALL_SET: // reset all channel settings to default
-            if (!_ads1299.streaming)
-            {
-                _serial.print("updating channel settings to");
-                _serial.print(" default");
-            }
+            printlnWifi("updating channel settings to default");
             _ads1299.streamSafeSetAllChannelsToDefault();
             break;
         case OPENBCI_CHANNEL_DEFAULT_ALL_REPORT: // report the default settings
-            // reportDefaultChannelSettings(); // todo!
+            reportDefaultChannelSettings();
             break;
 
         // DAISY MODULE COMMANDS
@@ -1317,29 +1317,25 @@ boolean WifiServer::processChar(char character)
             {
                 _ads1299.removeDaisy();
             }
-            // else if (wifi.present && wifi.tx)
-            // {
-            //     wifi.sendStringLast("No daisy to remove");
-            // }
             else
             {
-                _serial.println("No daisy to remove");
+                printlnWifi("No daisy to remove");
             }
             break;
         case OPENBCI_CHANNEL_MAX_NUMBER_16: // use 16 channel mode
             if (_ads1299.daisyPresent == false)
             {
-                // _ads1299.attachDaisy();
+                _ads1299.attachDaisy();
             }
             if (_ads1299.daisyPresent)
             {
-                // printAll("16");
+                printlnWifi("16");
             }
             else
             {
-                // printAll("8");
+                printlnWifi("8");
             }
-            // sendEOT();
+
             break;
 
         // STREAM DATA AND FILTER COMMANDS
@@ -1366,6 +1362,7 @@ boolean WifiServer::processChar(char character)
             //     }
             // }
             _ads1299.streamStart(); // turn on the fire hose
+            printlnWifi("Stream started");
             break;
         case OPENBCI_STREAM_STOP: // stop streaming data
             // if (curAccelMode == ACCEL_MODE_ON)
@@ -1374,45 +1371,34 @@ boolean WifiServer::processChar(char character)
             // } // shut down the accelerometer if you're using it
             // wifi.tx = true;
             _ads1299.streamStop();
+            printlnWifi("Stream stopped");
             // if (wifi.present && wifi.tx)
             // {
             //     wifi.sendStringLast("Stream stopped");
             // }
+
             break;
 
         //  INITIALIZE AND VERIFY
         case OPENBCI_MISC_SOFT_RESET:
-            // boardReset();
             _ads1299.softReset(); // initialize ADS and read device IDs
             break;
         //  QUERY THE ADS AND ACCEL REGITSTERS
         case OPENBCI_MISC_QUERY_REGISTER_SETTINGS:
-            if (!_ads1299.streaming)
-            {
-                // todo!
-                // _ads1299.printAllRegisters(); // print the ADS and accelerometer register values
-            }
+            printAllRegisters(); // print the ADS and accelerometer register values
             break;
 
         // TIME SYNC
         case OPENBCI_TIME_SET:
             // Set flag to send time packet
-            if (!_ads1299.streaming)
-            {
-                // printAll("Time stamp ON");
-                // sendEOT();
-            }
+            printlnWifi("Time stamp ON");
             curTimeSyncMode = TIME_SYNC_MODE_ON;
             setCurPacketType();
             break;
 
         case OPENBCI_TIME_STOP:
             // Stop the Sync
-            if (!_ads1299.streaming)
-            {
-                // printAll("Time stamp OFF");
-                // sendEOT();
-            }
+            printlnWifi("Time stamp OFF");
             curTimeSyncMode = TIME_SYNC_MODE_OFF;
             setCurPacketType();
             break;
@@ -1445,6 +1431,8 @@ boolean WifiServer::processChar(char character)
             //     printFailure();
             //     printSerial("Wifi not attached");
             //     sendEOT();
+            // printlnWifi("Wifi attached");
+
             // }
             break;
         case OPENBCI_WIFI_REMOVE:
@@ -1459,6 +1447,8 @@ boolean WifiServer::processChar(char character)
             //     printSerial("Wifi not removed");
             // }
             // sendEOT();
+            // printlnWifi("Wifi removed");
+
             break;
         case OPENBCI_WIFI_STATUS:
             // if (wifi.present)
@@ -1471,6 +1461,8 @@ boolean WifiServer::processChar(char character)
             //     printAll(" to attach the shield");
             // }
             // sendEOT();
+            // printlnWifi("Wifi present");
+
             break;
         case OPENBCI_WIFI_RESET:
             // wifi.reset();
@@ -1480,6 +1472,8 @@ boolean WifiServer::processChar(char character)
         case OPENBCI_GET_VERSION:
             // printAll("v3.1.2");
             // sendEOT();
+            printlnWifi("v3.1.2");
+
             break;
         default:
             return false;
@@ -1510,12 +1504,7 @@ void WifiServer::processIncomingChannelSettings(char character)
         // put flag back down
         endMultiCharCmdTimer();
 
-        if (!_ads1299.streaming)
-        {
-            // printFailure();
-            // printAll("too few chars");
-            // sendEOT();
-        }
+        printFailureWifi("too few chars");
         // else if (wifi.present && wifi.tx)
         // {
         //     wifi.sendStringLast("Failure: too few chars");
@@ -1550,16 +1539,8 @@ void WifiServer::processIncomingChannelSettings(char character)
     case 8: // 'X' latch
         if (character != OPENBCI_CHANNEL_CMD_LATCH)
         {
-            if (!_ads1299.streaming)
-            {
-                // printFailure();
-                // printAll("Err: 9th char not X");
-                // sendEOT();
-            }
-            // else if (wifi.present && wifi.tx)
-            // {
-            //     wifi.sendStringLast("Failure: Err: 9th char not X");
-            // }
+            printFailureWifi("Err: 9th char not X");
+
             // We failed somehow and should just abort
             numberOfIncomingSettingsProcessedChannel = 0;
 
@@ -1568,16 +1549,8 @@ void WifiServer::processIncomingChannelSettings(char character)
         }
         break;
     default: // should have exited
-        if (!_ads1299.streaming)
-        {
-            // printFailure();
-            // printAll("Err: too many chars");
-            // sendEOT();
-        }
-        // else if (wifi.present && wifi.tx)
-        // {
-        //     wifi.sendStringLast("Failure: Err: too many chars");
-        // }
+        printFailureWifi("Err: too many chars");
+
         // We failed somehow and should just abort
         numberOfIncomingSettingsProcessedChannel = 0;
 
@@ -1592,21 +1565,8 @@ void WifiServer::processIncomingChannelSettings(char character)
     if (numberOfIncomingSettingsProcessedChannel == (OPENBCI_NUMBER_OF_BYTES_SETTINGS_CHANNEL))
     {
         // We are done processing channel settings...
-        if (!_ads1299.streaming)
-        {
-            // char buf[2];
-            // printSuccess();
-            // printAll("Channel set for ");
-            // printAll(itoa(currentChannelSetting + 1, buf, 10));
-            // sendEOT();
-        }
-        // else if (wifi.present && wifi.tx)
-        // {
-        //     char buf[3];
-        //     wifi.sendStringMulti("Success: Channel set for ");
-        //     delay(1);
-        //     wifi.sendStringLast(itoa(currentChannelSetting + 1, buf, 10));
-        // }
+        char buf[2];
+        printfWifi("Success: Channel set for %s\r\n", itoa(currentChannelSetting + 1, buf, 10));
 
         _ads1299.channelSettings[currentChannelSetting][POWER_DOWN] = optionalArgBuffer7[0];
         _ads1299.channelSettings[currentChannelSetting][GAIN_SET] = optionalArgBuffer7[1];
@@ -1648,16 +1608,7 @@ void WifiServer::processIncomingLeadOffSettings(char character)
         // put flag back down
         endMultiCharCmdTimer();
 
-        if (!_ads1299.streaming)
-        {
-            // printFailure();
-            // printAll("too few chars");
-            // sendEOT();
-        }
-        // else if (wifi.present && wifi.tx)
-        // {
-        //     wifi.sendStringLast("Failure: too few chars");
-        // }
+        printFailureWifi("too few chars");
 
         return;
     }
@@ -1675,16 +1626,8 @@ void WifiServer::processIncomingLeadOffSettings(char character)
     case 4: // 'Z' latch
         if (character != OPENBCI_CHANNEL_IMPEDANCE_LATCH)
         {
-            if (!_ads1299.streaming)
-            {
-                // printFailure();
-                // printAll("Err: 5th char not Z");
-                // sendEOT();
-            }
-            // else if (wifi.present && wifi.tx)
-            // {
-            //     wifi.sendStringLast("Failure: Err: 5th char not Z");
-            // }
+            printFailureWifi("Err: 5th char not Z");
+
             // We failed somehow and should just abort
             // reset numberOfIncomingSettingsProcessedLeadOff
             numberOfIncomingSettingsProcessedLeadOff = 0;
@@ -1694,16 +1637,8 @@ void WifiServer::processIncomingLeadOffSettings(char character)
         }
         break;
     default: // should have exited
-        if (!_ads1299.streaming)
-        {
-            // printFailure();
-            // printAll("Err: too many chars");
-            // sendEOT();
-        }
-        // else if (wifi.present && wifi.tx)
-        // {
-        //     wifi.sendStringLast("Failure: Err: too many chars");
-        // }
+        printFailureWifi("Err: too many chars");
+
         // We failed somehow and should just abort
         // reset numberOfIncomingSettingsProcessedLeadOff
         numberOfIncomingSettingsProcessedLeadOff = 0;
@@ -1720,21 +1655,8 @@ void WifiServer::processIncomingLeadOffSettings(char character)
     {
         // We are done processing lead off settings...
 
-        if (!_ads1299.streaming)
-        {
-            // char buf[3];
-            // printSuccess();
-            // printAll("Lead off set for ");
-            // printAll(itoa(currentChannelSetting + 1, buf, 10));
-            // sendEOT();
-        }
-        // else if (wifi.present && wifi.tx)
-        // {
-        //     char buf[3];
-        //     wifi.sendStringMulti("Success: Lead off set for ");
-        //     delay(1);
-        //     wifi.sendStringLast(itoa(currentChannelSetting + 1, buf, 10));
-        // }
+        char buf[3];
+        printfWifi("Success: Lead off set for %s\r\n", itoa(currentChannelSetting + 1, buf, 10));
 
         _ads1299.leadOffSettings[currentChannelSetting][PCHAN] = optionalArgBuffer7[0];
         _ads1299.leadOffSettings[currentChannelSetting][NCHAN] = optionalArgBuffer7[1];
@@ -1755,36 +1677,27 @@ void WifiServer::processIncomingLeadOffSettings(char character)
 
 void WifiServer::processIncomingBoardMode(char c)
 {
-    // if (c == OPENBCI_BOARD_MODE_SET)
-    // {
-    // printSuccess();
-    // printAll(getBoardMode());
-    // sendEOT();
-    // }
-    // else if (isDigit(c))
-    // {
-    //     uint8_t digit = c - '0';
-    //     if (digit < BOARD_MODE_END_OF_MODES)
-    //     {
-    //         setBoardMode(digit);
-    //         printSuccess();
-    //         printAll(getBoardMode());
-    //         sendEOT();
-    //     }
-    //     else
-    //     {
-    //         printFailure();
-    //         printAll("board mode value");
-    //         printAll(" out of bounds.");
-    //         sendEOT();
-    //     }
-    // }
-    // else
-    // {
-    //     printFailure();
-    //     printAll("invalid board mode value.");
-    //     sendEOT();
-    // }
+    if (c == OPENBCI_BOARD_MODE_SET)
+    {
+        printfWifi("Success: %s\r\n", getBoardMode());
+    }
+    else if (isDigit(c))
+    {
+        uint8_t digit = c - '0';
+        if (digit < BOARD_MODE_END_OF_MODES)
+        {
+            setBoardMode(digit);
+            printfWifi("Success: %s\r\n", getBoardMode());
+        }
+        else
+        {
+            printFailureWifi("board mode value out of bounds.");
+        }
+    }
+    else
+    {
+        printFailureWifi("invalid board mode value.");
+    }
     endMultiCharCmdTimer();
 }
 
@@ -1792,11 +1705,7 @@ void WifiServer::processIncomingSampleRate(char c)
 {
     if (c == OPENBCI_SAMPLE_RATE_SET)
     {
-        // printSuccess();
-        // printAll("Sample rate is ");
-        // printAll(getSampleRate());
-        // printAll("Hz");
-        // sendEOT();
+        printfWifi("Success: Sample rate is %sHz\r\n", getSampleRate());
     }
     else if (isDigit(c))
     {
@@ -1804,52 +1713,17 @@ void WifiServer::processIncomingSampleRate(char c)
         if (digit <= ADS1299::SAMPLE_RATE_250)
         {
             _ads1299.streamSafeSetSampleRate((ADS1299::SAMPLE_RATE)digit);
-            if (!_ads1299.streaming)
-            {
-                // printSuccess();
-                // printAll("Sample rate is ");
-                // printAll(getSampleRate());
-                // printAll("Hz");
-                // sendEOT();
-            }
-            // else if (wifi.present && wifi.tx)
-            // {
-            //     wifi.sendStringMulti("Success: Sample rate is ");
-            //     delay(1);
-            //     wifi.sendStringMulti(getSampleRate());
-            //     delay(1);
-            //     wifi.sendStringLast("Hz");
-            // }
+
+            printfWifi("Success: Sample rate is %sHz\r\n", getSampleRate());
         }
         else
         {
-            if (!_ads1299.streaming)
-            {
-                // printFailure();
-                // printAll("sample value out of bounds");
-                // sendEOT();
-            }
-            // else if (wifi.present && wifi.tx)
-            // {
-            //     wifi.sendStringMulti("Failure: sample value");
-            //     delay(1);
-            //     wifi.sendStringLast(" out of bounds");
-            // }
+            printFailureWifi("Failure: sample value out of bounds");
         }
     }
     else
     {
-        if (!_ads1299.streaming)
-        {
-            // printFailure();
-            // printAll("invalid sample value");
-            // sendEOT();
-        }
-        // else if (wifi.present && wifi.tx)
-        // {
-        //     wifi.sendStringLast("Failure: invalid sample value");
-        //     delay(1);
-        // }
+        printFailureWifi("invalid sample value");
     }
     endMultiCharCmdTimer();
 }
@@ -1864,10 +1738,7 @@ void WifiServer::processInsertMarker(char c)
     markerValue = c;
     newMarkerReceived = true;
     endMultiCharCmdTimer();
-    // if (wifi.present && wifi.tx)
-    // {
-    //     wifi.sendStringLast("Marker recieved");
-    // }
+    printlnWifi("Marker recieved");
 }
 
 /// @brief Start the timer on multi char commands
@@ -2003,10 +1874,7 @@ boolean WifiServer::checkMultiCharCmdTimer(void)
         else
         { // the timer has timed out - reset the multi char timeout
             endMultiCharCmdTimer();
-            // printAll("Timeout processing multi byte");
-            // printAll(" message - please send all");
-            // printAll(" commands at once as of v2");
-            // sendEOT();
+            printlnWifi("Timeout processing multi byte message - please send all commands at once as of v2");
         }
     }
     return false;
@@ -2240,6 +2108,239 @@ boolean WifiServer::isAStreamByte(uint8_t b)
 
 void WifiServer::loop(void)
 {
+    // 控制指示灯闪烁
+    if (ledFlashes > 0)
+    {
+        if (millis() > (ledLastFlash + ledInterval))
+        {
+            digitalWrite(PIN_LED, ledState ? HIGH : LOW);
+            if (ledState)
+            {
+                ledFlashes--;
+            }
+            ledState = !ledState;
+            ledLastFlash = millis();
+        }
+    }
+
+    // WebServer
+    server.handleClient();
+
+    // 客户端等待响应已完成
+    if (clientWaitingForResponseFullfilled)
+    {
+        clientWaitingForResponseFullfilled = false;
+        switch (curClientResponse)
+        {
+        case CLIENT_RESPONSE_OUTPUT_STRING:
+            returnOK(outputString);
+            outputString = "";
+            break;
+        case CLIENT_RESPONSE_NONE:
+        default:
+            returnOK();
+            break;
+        }
+    }
+
+    // 客户端等待响应超时
+    if (clientWaitingForResponse && (millis() > (timePassthroughBufferLoaded + 2000)))
+    {
+        clientWaitingForResponse = false;
+        returnFail(502, "Error: timeout getting command response, be sure board is fully connected");
+        outputString = "";
+#ifdef DEBUG
+        _serial.println("Failed to get response in 1000ms");
+#endif
+    }
+
+    // 发送脑电数据包
+    int packetsToSend = rawBufferHead - rawBufferTail;
+    if (packetsToSend < 0)
+    {
+        packetsToSend = NUM_PACKETS_IN_RING_BUFFER_RAW + packetsToSend; // for wrap around
+    }
+    if (packetsToSend > MAX_PACKETS_PER_SEND_TCP)
+    {
+        packetsToSend = MAX_PACKETS_PER_SEND_TCP;
+    }
+
+    // 是否存在客户端连接或者输出协议是串行（serial）或 UDP
+    // 当前微秒数是否大于（过去）最后一次向客户端发送数据的时间加上延迟（latency）|| 要发送的数据包数量是否等于最大允许的 TCP 发送包数量
+    // 要发送的数据包数量是否大于零
+    if ((clientTCP.connected() || curOutputProtocol == OUTPUT_PROTOCOL_SERIAL || curOutputProtocol == OUTPUT_PROTOCOL_UDP) && (micros() > (lastSendToClient + getLatency()) || packetsToSend == MAX_PACKETS_PER_SEND_TCP) && (packetsToSend > 0))
+    {
+        // Serial.printf("LS2C: %lums H: %u T: %u P2S: %d", (micros() - lastSendToClient)/1000, rawBufferHead, rawBufferTail, packetsToSend);
+        digitalWrite(PIN_LED, LOW); // 指示灯亮
+
+        uint32_t taily = rawBufferTail;
+        for (uint8_t i = 0; i < packetsToSend; i++)
+        {
+            if (taily >= NUM_PACKETS_IN_RING_BUFFER_RAW)
+            {
+                taily = 0;
+            }
+            uint8_t *buf = rawBuffer[taily];
+            uint8_t stopByte = buf[0];
+            buffer[bufferPosition++] = STREAM_PACKET_BYTE_START;
+            for (int i = 1; i < BYTES_PER_SPI_PACKET; i++)
+            {
+                buffer[bufferPosition++] = buf[i];
+            }
+            buffer[bufferPosition++] = stopByte;
+            taily += 1;
+        }
+        lastSendToClient = micros();
+        if (curOutputProtocol == OUTPUT_PROTOCOL_TCP)
+        {
+            clientTCP.write(buffer, bufferPosition);
+        }
+        else if (curOutputProtocol == OUTPUT_PROTOCOL_UDP)
+        {
+            clientUDP.beginPacket(tcpAddress, tcpPort);
+            clientUDP.write(buffer, bufferPosition);
+            if (clientUDP.endPacket() == 1)
+            {
+                // Serial.println(" udp0");
+            }
+            if (redundancy)
+            {
+                clientUDP.beginPacket(tcpAddress, tcpPort);
+                clientUDP.write(buffer, bufferPosition);
+                if (clientUDP.endPacket() == 1)
+                {
+                    // Serial.println(" udp1");
+                }
+                clientUDP.beginPacket(tcpAddress, tcpPort);
+                clientUDP.write(buffer, bufferPosition);
+                if (clientUDP.endPacket() == 1)
+                {
+                    // Serial.println(" udp2");
+                }
+            }
+        }
+        bufferPosition = 0;
+        rawBufferTail = taily;
+        digitalWrite(PIN_LED, HIGH); // 指示灯灭
+    }
+}
+
+void WifiServer::ProcessPacketResponse(String message)
+{
+    if (clientWaitingForResponse)
+    {
+        if (message.length() == 0)
+        {
+            curClientResponse = CLIENT_RESPONSE_NONE;
+            clientWaitingForResponseFullfilled = true;
+            clientWaitingForResponse = false;
+        }
+        else
+        {
+            outputString = message;
+            clientWaitingForResponse = false;
+#ifdef DEBUG
+            _serial.println(outputString);
+#endif
+            curClientResponse = CLIENT_RESPONSE_OUTPUT_STRING;
+            clientWaitingForResponseFullfilled = true;
+        }
+    }
+}
+
+void WifiServer::printfWifi(const char *format, ...)
+{
+    // Use a buffer to store the formatted string
+    char buffer[256];
+
+    // Use va_list to handle variable arguments
+    va_list args;
+    va_start(args, format);
+    vsnprintf(buffer, sizeof(buffer), format, args);
+    va_end(args);
+
+    // Process the formatted string using ProcessPacketResponse
+    String message(buffer);
+    ProcessPacketResponse(message);
+}
+
+void WifiServer::printlnWifi(const char *msg)
+{
+    String message(msg);
+    message + "\r\n";
+    ProcessPacketResponse(message);
+}
+
+void WifiServer::printWifi(const char *msg)
+{
+    String message(msg);
+    ProcessPacketResponse(message);
+}
+
+void WifiServer::printFailureWifi(const char *msg)
+{
+    String message("Failure: ");
+    message + msg + "\r\n";
+    ProcessPacketResponse(message);
+}
+
+const char *WifiServer::getBoardMode(void)
+{
+    switch (curBoardMode)
+    {
+    case BOARD_MODE_DEBUG:
+        return "debug";
+    case BOARD_MODE_ANALOG:
+        return "analog";
+    case BOARD_MODE_DIGITAL:
+        return "digital";
+    case BOARD_MODE_MARKER:
+        return "marker";
+    case BOARD_MODE_BLE:
+        return "BLE";
+    case BOARD_MODE_DEFAULT:
+    default:
+        return "default";
+    }
+}
+
+const char *WifiServer::getSampleRate(void)
+{
+    switch (_ads1299.curSampleRate)
+    {
+    case ADS1299::SAMPLE_RATE_16000:
+        return "16000";
+    case ADS1299::SAMPLE_RATE_8000:
+        return "8000";
+    case ADS1299::SAMPLE_RATE_4000:
+        return "4000";
+    case ADS1299::SAMPLE_RATE_2000:
+        return "2000";
+    case ADS1299::SAMPLE_RATE_1000:
+        return "1000";
+    case ADS1299::SAMPLE_RATE_500:
+        return "500";
+    case ADS1299::SAMPLE_RATE_250:
+    default:
+        return "250";
+    }
+}
+
+void WifiServer::reportDefaultChannelSettings(void)
+{
+    char buf[7];
+    buf[0] = _ads1299.getDefaultChannelSettingForSettingAscii(POWER_DOWN);     // on = NO, off = YES
+    buf[1] = _ads1299.getDefaultChannelSettingForSettingAscii(GAIN_SET);       // Gain setting
+    buf[2] = _ads1299.getDefaultChannelSettingForSettingAscii(INPUT_TYPE_SET); // input muxer setting
+    buf[3] = _ads1299.getDefaultChannelSettingForSettingAscii(BIAS_SET);       // add this channel to bias generation
+    buf[4] = _ads1299.getDefaultChannelSettingForSettingAscii(SRB2_SET);       // connect this P side to SRB2
+    buf[5] = _ads1299.getDefaultChannelSettingForSettingAscii(SRB1_SET);       // don't use SRB1
+    printlnWifi((const char *)buf);
+}
+
+void WifiServer::printAllRegisters()
+{
+    // todo!
 }
 
 /// @brief Check to see if SNTP is active
@@ -2296,44 +2397,19 @@ void WifiServer::passthroughBufferClear(void)
 uint8_t WifiServer::passthroughCommands(String commands)
 {
 #ifdef DEBUG
-    _serial.println("passthroughCommands:" + commands);
+    _serial.println("Got Commands: " + commands);
 #endif
     uint8_t numCmds = uint8_t(commands.length());
-    if (numCmds == 0)
+    if (numCmds > BYTES_PER_SPI_PACKET - 1)
+    {
+        return PASSTHROUGH_FAIL_TOO_MANY_CHARS;
+    }
+    else if (numCmds == 0)
     {
         return PASSTHROUGH_FAIL_NO_CHARS;
     }
-    processChar(commands.c_str()[0]);
-    // if (numCmds > BYTES_PER_SPI_PACKET - 1)
-    // {
-    //     return PASSTHROUGH_FAIL_TOO_MANY_CHARS;
-    // }
-    // else if (numCmds == 0)
-    // {
-    //     return PASSTHROUGH_FAIL_NO_CHARS;
-    // }
-    // // _serial.printf("got %d commands | passthroughPosition: %d\n", numCmds, passthroughPosition);
-    // if (passthroughPosition > 0)
-    // {
-    //     if (numCmds > BYTES_PER_SPI_PACKET - passthroughPosition - 1)
-    //     { // -1 because of numCmds as first byte
-    //         return PASSTHROUGH_FAIL_QUEUE_FILLED;
-    //     }
-    //     passthroughBuffer[0] += numCmds;
-    // }
-    // else
-    // {
-    //     passthroughBuffer[passthroughPosition++] = numCmds;
-    // }
-    // for (int i = 0; i < numCmds; i++)
-    // {
-    //     // _serial.printf("cmd %c | passthroughPosition: %d\n", commands.charAt(i), passthroughPosition);
-    //     passthroughBuffer[passthroughPosition++] = commands.charAt(i);
-    // }
-    // passthroughBufferLoaded = true;
-    // clientWaitingForResponse = true;
-    // timePassthroughBufferLoaded = millis();
-    // // SPISlave.setData(passthroughBuffer, BYTES_PER_SPI_PACKET); // todo!
+    processCommands(commands);
+    // processChar(commands.c_str()[0]);
     return PASSTHROUGH_PASS;
 }
 
@@ -2609,4 +2685,54 @@ void WifiServer::setNTPOffset(unsigned long ntpOffset)
 void WifiServer::setOutputMode(OUTPUT_MODE newOutputMode)
 {
     curOutputMode = newOutputMode;
+}
+
+void WifiServer::processCommands(String commands)
+{
+    for (int i = 0; i < commands.length(); i++)
+    {
+        processChar(commands[i]);
+    }
+}
+
+/// @brief Used to set the board mode of the system.
+/// @param newBoardMode The board mode to swtich to
+void WifiServer::setBoardMode(uint8_t newBoardMode)
+{
+    if (curBoardMode == (BOARD_MODE)newBoardMode)
+        return;
+    curBoardMode = (BOARD_MODE)newBoardMode;
+    switch (curBoardMode)
+    {
+    case BOARD_MODE_ANALOG:
+        curAccelMode = ACCEL_MODE_OFF;
+        // beginPinsAnalog();
+        break;
+    case BOARD_MODE_DIGITAL:
+        curAccelMode = ACCEL_MODE_OFF;
+        // beginPinsDigital();
+        break;
+    case BOARD_MODE_DEBUG:
+        // curDebugMode = DEBUG_MODE_ON;
+        // beginPinsDebug();
+        // beginSerial1();
+        break;
+    case BOARD_MODE_DEFAULT:
+        curAccelMode = ACCEL_MODE_ON;
+        // endSerial1();
+        // beginPinsDefault();
+        // endSerial0();
+        // beginSerial0(OPENBCI_BAUD_RATE);
+        break;
+    case BOARD_MODE_MARKER:
+        curAccelMode = ACCEL_MODE_OFF;
+        break;
+    case BOARD_MODE_BLE:
+        // endSerial0();
+        // beginSerial0(OPENBCI_BAUD_RATE_BLE);
+    default:
+        break;
+    }
+    delay(10);
+    setCurPacketType();
 }

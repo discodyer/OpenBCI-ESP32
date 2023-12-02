@@ -5,6 +5,7 @@
 #include "Config.h"
 #include "WifiServer.h"
 #include "WebServer.h"
+#include "SPI.h"
 
 SPIClass * hspi = NULL;
 
@@ -36,4 +37,5 @@ void loop()
         ads1299.sendChannelData();
     }
     server.handleClient();
+    board.loop();
 }

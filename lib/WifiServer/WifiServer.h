@@ -4,16 +4,16 @@
 #include <ArduinoJson.h>
 #include <time.h>
 #include <WiFiUdp.h>
-#include "ADS1299.h"
 #include "OpenBCI_Wifi_Definitions.h"
 #include "Config.h"
 #include "ESP32SSDP.h"
 #include "ESPmDNS.h"
 #include "WebServer.h"
 
+class ADS1299;
+
 #define DEBUG
 
-extern ADS1299 ads1299;
 extern WebServer server;
 extern WiFiClass WiFi;
 extern WiFiUDP clientUDP;
@@ -182,6 +182,15 @@ public:
     int32_t int24To32(uint8_t *);
     boolean isAStreamByte(uint8_t);
     void loop(void);
+    void ProcessPacketResponse(String message);
+    void printfWifi(const char *format, ...);
+    void printlnWifi(const char *msg);
+    const char *getBoardMode(void);
+    const char *getSampleRate(void);
+    void reportDefaultChannelSettings();
+    void printAllRegisters();
+    void printWifi(const char *msg);
+    void printFailureWifi(const char *msg);
     boolean ntpActive(void);
     unsigned long long ntpGetPreciseAdjustment(unsigned long);
     unsigned long long ntpGetTime(void);
@@ -207,6 +216,8 @@ public:
     void setNumChannels(uint8_t);
     void setNTPOffset(unsigned long);
     void setOutputMode(OUTPUT_MODE);
+    void processCommands(String commands);
+    void setBoardMode(uint8_t newBoardMode);
     void setOutputProtocol(OUTPUT_PROTOCOL);
     boolean spiHasMaster(void);
     void spiOnDataSent(void);

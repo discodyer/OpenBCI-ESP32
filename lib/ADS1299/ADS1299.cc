@@ -1,4 +1,7 @@
+#include <SPI.h>
 #include "ADS1299.h"
+
+extern SPIClass *hspi;
 
 volatile bool ADS1299::channelDataAvailable = false;
 
@@ -184,14 +187,14 @@ void ADS1299::removeDaisy(void)
         daisyPresent = false;
         if (!isRunning)
         {
-            Serial0.println("daisy removed");
+            // printlnWifi("daisy removed");
         }
     }
     else
     {
         if (!isRunning)
         {
-            Serial0.println("no daisy to remove!");
+            // printlnWifi("no daisy to remove!");
         }
     }
 }
@@ -408,6 +411,35 @@ byte ADS1299::getDefaultChannelSettingForSetting(byte setting)
     }
 }
 
+// void ADS1299::printfWifi(const char *format, ...)
+// {
+//     // Use a buffer to store the formatted string
+//     char buffer[256];
+
+//     // Use va_list to handle variable arguments
+//     va_list args;
+//     va_start(args, format);
+//     vsnprintf(buffer, sizeof(buffer), format, args);
+//     va_end(args);
+
+//     // Process the formatted string using ProcessPacketResponse
+//     String message(buffer);
+//     board.ProcessPacketResponse(message);
+// }
+
+// void ADS1299::printlnWifi(const char *msg)
+// {
+//     String message(msg);
+//     message + "\r\n";
+//     board.ProcessPacketResponse(message);
+// }
+
+// void ADS1299::printWifi(const char *msg)
+// {
+//     String message(msg);
+//     board.ProcessPacketResponse(message);
+// }
+
 /// @brief read data continuous
 /// @param targetSS
 void ADS1299::RDATAC(ChipSelect targetSS)
@@ -454,6 +486,32 @@ void ADS1299::initialize()
 
     this->startHSPI();
     initialize_ads();
+}
+
+void ADS1299::attachDaisy(void)
+{
+    WREG(CONFIG1, (ADS1299_CONFIG1_DAISY | curSampleRate), BOARD_ADS); // tell on-board ADS to output the clk, set the data rate to 250SPS
+    delay(40);
+    resetADS(DAISY_ADS); // software reset daisy module if present
+    delay(10);
+    daisyPresent = smellDaisy();
+    if (!daisyPresent)
+    {
+        WREG(CONFIG1, (ADS1299_CONFIG1_DAISY_NOT | curSampleRate), BOARD_ADS); // turn off clk output if no daisy present
+        numChannels = 8;                                                       // expect up to 8 ADS channels
+        // if (!isRunning)
+        // {
+        //     printlnWifi("no daisy to attach!");
+        // }
+    }
+    else
+    {
+        numChannels = 16; // expect up to 16 ADS channels
+        // if (!isRunning)
+        // {
+        //     printlnWifi("daisy attached");
+        // }
+    }
 }
 
 void ADS1299::setSampleRate(uint8_t newSampleRateCode)
@@ -1310,8 +1368,7 @@ void ADS1299::activateAllChannelsToTestCondition(byte testInputCode, byte amplit
     }
     else
     {
-        Serial0.print("Configured internal");
-        Serial0.print(" test signal.");
+        // printlnWifi("Configured internal test signal.");
     }
 }
 
