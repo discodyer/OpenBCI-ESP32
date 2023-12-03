@@ -1216,7 +1216,7 @@ void ADS1299::sendChannelData(void)
 {
     // sendChannelDataWifi(); // todo!
     sendChannelDataSerial();
-    sampleCounter++;
+    // sampleCounter++;
 }
 
 void ADS1299::sendChannelDataSerial()

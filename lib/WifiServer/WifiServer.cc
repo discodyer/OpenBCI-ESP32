@@ -11,7 +11,7 @@ WifiServer::WifiServer()
       buffer{}, _serial(Serial0), _ads1299(ads1299), _WiFi(WiFi),
       curPacketType(PACKET_TYPE_ACCEL), curTimeSyncMode(TIME_SYNC_MODE_OFF),
       curAccelMode(ACCEL_MODE_OFF), currentChannelSetting(0), optionalArgBuffer7{},
-      newMarkerReceived(false), markerValue(0)
+      newMarkerReceived(false), markerValue(0), sampleCounter(0)
 {
 }
 
@@ -715,6 +715,9 @@ void WifiServer::serverReturn(int code, String s)
     sendHeadersForCORS();
     server.send(code, "text/plain", s + "\r\n");
     digitalWrite(PIN_LED, HIGH); // 指示灯灭
+#ifdef DEBUG
+    _serial.printf("server return: %s\r", s.c_str());
+#endif
 }
 
 void WifiServer::returnOK(String s)
@@ -1147,6 +1150,9 @@ boolean WifiServer::processChar(char character)
 #endif
     if (checkMultiCharCmdTimer())
     { // we are in a multi char command
+#ifdef DEBUG
+        _serial.printf("we are in a multi char command: %d\n", getMultiCharCommand());
+#endif
         switch (getMultiCharCommand())
         {
         case MULTI_CHAR_CMD_PROCESSING_INCOMING_SETTINGS_CHANNEL:
@@ -1703,9 +1709,15 @@ void WifiServer::processIncomingBoardMode(char c)
 
 void WifiServer::processIncomingSampleRate(char c)
 {
+#ifdef DEBUG
+    _serial.printf("pIncomingSampleRate: %c\n", c);
+#endif
     if (c == OPENBCI_SAMPLE_RATE_SET)
     {
         printfWifi("Success: Sample rate is %sHz\r\n", getSampleRate());
+#ifdef DEBUG
+        _serial.printf("Success: Sample rate is %sHz\r\n", getSampleRate());
+#endif
     }
     else if (isDigit(c))
     {
@@ -1715,6 +1727,10 @@ void WifiServer::processIncomingSampleRate(char c)
             _ads1299.streamSafeSetSampleRate((ADS1299::SAMPLE_RATE)digit);
 
             printfWifi("Success: Sample rate is %sHz\r\n", getSampleRate());
+#ifdef DEBUG
+            _serial.printf("Success: Sample rate is %sHz\r\n", getSampleRate());
+            _serial.printf("%d", millis() - timePassthroughBufferLoaded);
+#endif
         }
         else
         {
@@ -1749,6 +1765,9 @@ void WifiServer::startMultiCharCmdTimer(char cmd)
     // {
     //     Serial1.printf("Start multi char: %c\n", cmd);
     // }
+#ifdef DEBUG
+    _serial.printf("Start multi char: %d\n", cmd);
+#endif
     isMultiCharCmd = true;
     multiCharCommand = cmd;
     multiCharCmdTimeout = millis() + MULTI_CHAR_COMMAND_TIMEOUT_MS;
@@ -1781,6 +1800,9 @@ void WifiServer::setCurPacketType(void)
 /// @param
 void WifiServer::endMultiCharCmdTimer(void)
 {
+#ifdef DEBUG
+    _serial.println("endMultiCharCmdTimer");
+#endif
     isMultiCharCmd = false;
     multiCharCommand = MULTI_CHAR_CMD_NONE;
 }
@@ -1860,6 +1882,153 @@ char WifiServer::getGainForAsciiChar(char asciiChar)
     output = asciiChar - '0';
 
     return output << 4;
+}
+
+void WifiServer::sendChannelDataWifi(boolean daisy)
+{
+    sendChannelDataWifi(curPacketType, daisy);
+}
+
+/// @brief Writes channel data to wifi in the correct stream packet format.
+/// @param packetType {PACKET_TYPE} - The type of packet to send
+/// @param daisy {boolean} - If this packet for the daisy
+///     Adds stop byte see `OpenBCI_32bit_Library.h` enum PACKET_TYPE
+void WifiServer::sendChannelDataWifi(PACKET_TYPE packetType, boolean daisy)
+{
+    uint8_t bufferTxPosition;
+    uint8_t bufferTx[32];
+
+    bufferTx[bufferTxPosition++] = (uint8_t)(PCKT_END | packetType);
+    bufferTx[bufferTxPosition++] = sampleCounter++;
+
+    if (daisy)
+    {
+        // Send daisy
+        for (int i = 0; i < 24; i++)
+        {
+            bufferTx[bufferTxPosition++] = _ads1299.daisyChannelDataRaw[i];
+        }
+    }
+    else
+    {
+        // Send on board
+        for (int i = 0; i < 24; i++)
+        {
+            bufferTx[bufferTxPosition++] = _ads1299.boardChannelDataRaw[i];
+        }
+    }
+
+    switch (packetType)
+    {
+    case PACKET_TYPE_ACCEL:
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[i]); // write 16 bit axis data MSB first
+            bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[i]);  // axisData is array of type short (16bit)
+        }
+        break;
+    }
+    case PACKET_TYPE_ACCEL_TIME_SET:
+    { // send two bytes of either accel data or blank
+        uint8_t axis = 0;
+        switch (sampleCounter % 10)
+        {
+        case 0x07: // ACCEL_AXIS_X
+            axis = 0;
+            break;
+        case 0x08: // ACCEL_AXIS_Y
+            axis = 1;
+            break;
+        case 0x09: // ACCEL_AXIS_Z
+            axis = 2;
+            break;
+        default:
+            // wifi.storeByteBufTx((byte)0x00); // high byte
+            // wifi.storeByteBufTx((byte)0x00); // low byte
+            break;
+        }
+        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[axis]); // write 16 bit axis data MSB first
+        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[axis]);  // axisData is array of type short (16bit)
+
+        // serialize the number, placing the MSB in lower packets
+        for (int j = 3; j >= 0; j--)
+        {
+            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
+        }
+        curPacketType = PACKET_TYPE_ACCEL_TIME_SYNC;
+        break;
+    }
+    case PACKET_TYPE_ACCEL_TIME_SYNC:
+    { // send two bytes of either accel data or blank
+        uint8_t axis = 0;
+        switch (sampleCounter % 10)
+        {
+        case 0x07: // ACCEL_AXIS_X
+            axis = 0;
+            break;
+        case 0x08: // ACCEL_AXIS_Y
+            axis = 1;
+            break;
+        case 0x09: // ACCEL_AXIS_Z
+            axis = 2;
+            break;
+        default:
+            // wifi.storeByteBufTx((byte)0x00); // high byte
+            // wifi.storeByteBufTx((byte)0x00); // low byte
+            break;
+        }
+        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[axis]); // write 16 bit axis data MSB first
+        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[axis]);  // axisData is array of type short (16bit)
+        // serialize the number, placing the MSB in lower packets
+        for (int j = 3; j >= 0; j--)
+        {
+            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
+        }
+        break;
+    }
+    case PACKET_TYPE_RAW_AUX_TIME_SET:
+    {
+        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[0]); // 2 bytes of aux data
+        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[0]);
+        // serialize the number, placing the MSB in lower packets
+        for (int j = 3; j >= 0; j--)
+        {
+            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
+        }
+        curPacketType = PACKET_TYPE_RAW_AUX_TIME_SYNC;
+        break;
+    }
+    case PACKET_TYPE_RAW_AUX_TIME_SYNC:
+    {
+        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[0]); // 2 bytes of aux data
+        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[0]);
+        // serialize the number, placing the MSB in lower packets
+        for (int j = 3; j >= 0; j--)
+        {
+            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
+        }
+        break;
+    }
+    case PACKET_TYPE_RAW_AUX:
+    default:
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[i]); // write 16 bit axis data MSB first
+            bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[i]);  // axisData is array of type short (16bit)
+        }
+        break;
+    }
+    }
+
+    int newHead = rawBufferHead + 1;
+    if (newHead >= NUM_PACKETS_IN_RING_BUFFER_RAW)
+    {
+        newHead = 0;
+    }
+    memcpy(rawBuffer + newHead, bufferTx, BYTES_PER_SPI_PACKET);
+    rawBufferHead = newHead;
 }
 
 /// @brief Check for valid on multi char commands
@@ -2126,33 +2295,38 @@ void WifiServer::loop(void)
     // WebServer
     server.handleClient();
 
-    // 客户端等待响应已完成
-    if (clientWaitingForResponseFullfilled)
-    {
-        clientWaitingForResponseFullfilled = false;
-        switch (curClientResponse)
-        {
-        case CLIENT_RESPONSE_OUTPUT_STRING:
-            returnOK(outputString);
-            outputString = "";
-            break;
-        case CLIENT_RESPONSE_NONE:
-        default:
-            returnOK();
-            break;
-        }
-    }
+    //     // 客户端等待响应已完成
+    //     if (clientWaitingForResponseFullfilled)
+    //     {
+    //         clientWaitingForResponseFullfilled = false;
+    //         switch (curClientResponse)
+    //         {
+    //         case CLIENT_RESPONSE_OUTPUT_STRING:
+    //         {
+    //             returnOK(outputString);
+    //             outputString = "";
+    //             break;
+    //         }
+    //         case CLIENT_RESPONSE_NONE:
+    //         {
+    //             returnOK();
+    //             break;
+    //         }
+    //         default:
+    //             break;
+    //         }
+    //     }
 
-    // 客户端等待响应超时
-    if (clientWaitingForResponse && (millis() > (timePassthroughBufferLoaded + 2000)))
-    {
-        clientWaitingForResponse = false;
-        returnFail(502, "Error: timeout getting command response, be sure board is fully connected");
-        outputString = "";
-#ifdef DEBUG
-        _serial.println("Failed to get response in 1000ms");
-#endif
-    }
+    //     // 客户端等待响应超时
+    //     if (clientWaitingForResponse && (millis() > (timePassthroughBufferLoaded + 2000)))
+    //     {
+    //         clientWaitingForResponse = false;
+    //         returnFail(502, "Error: timeout getting command response, be sure board is fully connected");
+    //         outputString = "";
+    // #ifdef DEBUG
+    //         _serial.println("Failed to get response in 1000ms");
+    // #endif
+    //     }
 
     // 发送脑电数据包
     int packetsToSend = rawBufferHead - rawBufferTail;
@@ -2227,6 +2401,9 @@ void WifiServer::loop(void)
 
 void WifiServer::ProcessPacketResponse(String message)
 {
+#ifdef DEBUG
+    // _serial.println(message);
+#endif
     if (clientWaitingForResponse)
     {
         if (message.length() == 0)
@@ -2234,16 +2411,15 @@ void WifiServer::ProcessPacketResponse(String message)
             curClientResponse = CLIENT_RESPONSE_NONE;
             clientWaitingForResponseFullfilled = true;
             clientWaitingForResponse = false;
+            returnOK();
         }
         else
         {
             outputString = message;
             clientWaitingForResponse = false;
-#ifdef DEBUG
-            _serial.println(outputString);
-#endif
             curClientResponse = CLIENT_RESPONSE_OUTPUT_STRING;
             clientWaitingForResponseFullfilled = true;
+            returnOK(message);
         }
     }
 }
@@ -2409,7 +2585,9 @@ uint8_t WifiServer::passthroughCommands(String commands)
         return PASSTHROUGH_FAIL_NO_CHARS;
     }
     processCommands(commands);
-    // processChar(commands.c_str()[0]);
+    passthroughBufferLoaded = true;
+    clientWaitingForResponse = true;
+    timePassthroughBufferLoaded = millis();
     return PASSTHROUGH_PASS;
 }
 

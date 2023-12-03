@@ -12,7 +12,7 @@
 
 class ADS1299;
 
-#define DEBUG
+// #define DEBUG
 
 extern WebServer server;
 extern WiFiClass WiFi;
@@ -262,6 +262,7 @@ public:
 #endif
     String outputString;
 
+    byte sampleCounter;
     uint8_t lastSampleNumber;
     uint8_t passthroughPosition;
     uint8_t passthroughBuffer[BYTES_PER_SPI_PACKET];
@@ -314,6 +315,8 @@ public:
     char getChannelCommandForAsciiChar(char asciiChar);
     char getNumberForAsciiChar(char asciiChar);
     char getGainForAsciiChar(char asciiChar);
+    void sendChannelDataWifi(boolean daisy);
+    void sendChannelDataWifi(PACKET_TYPE packetType, boolean daisy);
 
     ~WifiServer();
 

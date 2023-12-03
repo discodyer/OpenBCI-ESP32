@@ -7,7 +7,7 @@
 #include "WebServer.h"
 #include "SPI.h"
 
-SPIClass * hspi = NULL;
+SPIClass *hspi = NULL;
 
 ADS1299 ads1299;
 
@@ -31,11 +31,12 @@ void setup()
 
 void loop()
 {
-    if(ads1299.channelDataAvailable)
+    if (ads1299.channelDataAvailable)
     {
         ads1299.updateChannelData();
-        ads1299.sendChannelData();
+        board.sendChannelDataWifi(false);
+        if (ads1299.daisyPresent)
+            board.sendChannelDataWifi(true);
     }
-    server.handleClient();
     board.loop();
 }
