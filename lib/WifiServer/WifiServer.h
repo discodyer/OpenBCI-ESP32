@@ -104,16 +104,17 @@ public:
         ACCEL_MODE_ON,
         ACCEL_MODE_OFF
     };
-    
-    enum BOARD_MODE {
-    BOARD_MODE_DEFAULT,
-    BOARD_MODE_DEBUG,
-    BOARD_MODE_ANALOG,
-    BOARD_MODE_DIGITAL,
-    BOARD_MODE_MARKER,
-    BOARD_MODE_BLE,
-    BOARD_MODE_END_OF_MODES  // This must be the last entry-insert any new board modes above this line
-  };
+
+    enum BOARD_MODE
+    {
+        BOARD_MODE_DEFAULT,
+        BOARD_MODE_DEBUG,
+        BOARD_MODE_ANALOG,
+        BOARD_MODE_DIGITAL,
+        BOARD_MODE_MARKER,
+        BOARD_MODE_BLE,
+        BOARD_MODE_END_OF_MODES // This must be the last entry-insert any new board modes above this line
+    };
 
     // STRUCTS
 #ifdef RAW_TO_JSON
@@ -317,6 +318,17 @@ public:
     char getGainForAsciiChar(char asciiChar);
     void sendChannelDataWifi(boolean daisy);
     void sendChannelDataWifi(PACKET_TYPE packetType, boolean daisy);
+    void accelWriteAxisDataWifi(void);
+    void LIS3DH_writeAxisDataWifi(void);
+    void sendTimeWithAccelWifi(void);
+    void sendTimeWithRawAuxWifi(void);
+    void LIS3DH_writeAxisDataForAxisWifi(uint8_t axis);
+    void writeAuxDataWifi(void);
+    void writeTimeCurrentWifi(uint32_t newTime);
+
+    void flushBufferTx();
+    boolean storeByteBufTx(uint8_t b);
+    void bufferTxClear();
 
     ~WifiServer();
 
@@ -333,7 +345,7 @@ private:
     int numberOfIncomingSettingsProcessedBoardType;
     uint8_t optionalArgCounter;
     char optionalArgBuffer7[7];
-    boolean newMarkerReceived;  // flag to indicate a new marker has been received
+    boolean newMarkerReceived; // flag to indicate a new marker has been received
     char markerValue;
 
     TIME_SYNC_MODE curTimeSyncMode;
@@ -377,6 +389,9 @@ private:
 
     uint8_t buffer[BUFFER_SIZE];
     uint32_t bufferPosition;
+
+    uint8_t bufferTx[32];
+    uint8_t bufferTxPosition;
 
     // Functions
     // void initArduino(void);

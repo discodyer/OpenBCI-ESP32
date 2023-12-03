@@ -334,5 +334,8 @@
 #define BLE_TOTAL_DATA_BYTES 18
 #define BLE_RING_BUFFER_SIZE 50
 
+#define ACCEL_AXIS_X    0x07 // x axis
+#define ACCEL_AXIS_Y    0x08 // y axis
+#define ACCEL_AXIS_Z    0x09 // z axis
 
 #endif

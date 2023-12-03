@@ -238,6 +238,25 @@ void ADS1299::streamSafeChannelSettingsForChannel(byte channelNumber, byte power
     }
 }
 
+void ADS1299::streamSafeChannelSettingsForChannel(byte channelNumber)
+{
+    boolean wasStreaming = streaming;
+
+    // Stop streaming if you are currently streaming
+    if (streaming)
+    {
+        streamStop();
+    }
+
+    writeChannelSettings(channelNumber);
+
+    // Restart stream if need be
+    if (wasStreaming)
+    {
+        streamStart();
+    }
+}
+
 /// @brief deactivate the given channel.
 /// @param N
 void ADS1299::deactivateChannel(byte N)
@@ -306,6 +325,25 @@ void ADS1299::streamSafeLeadOffSetForChannel(byte channelNumber, byte pInput, by
     changeChannelLeadOffDetect(channelNumber);
 
     // leadOffSetForChannel(channelNumber, pInput, nInput);
+
+    // Restart stream if need be
+    if (wasStreaming)
+    {
+        streamStart();
+    }
+}
+
+void ADS1299::streamSafeLeadOffSetForChannel(byte channelNumber)
+{
+    boolean wasStreaming = streaming;
+
+    // Stop streaming if you are currently streaming
+    if (streaming)
+    {
+        streamStop();
+    }
+
+    changeChannelLeadOffDetect(channelNumber);
 
     // Restart stream if need be
     if (wasStreaming)
@@ -469,7 +507,7 @@ void ADS1299::STANDBY(ChipSelect targetSS)
 }
 
 ADS1299::ADS1299()
-    : lastSampleTime(0), sampleCounter(0), curSampleRate(SAMPLE_RATE_250),
+    : lastSampleTime(0), curSampleRate(SAMPLE_RATE_250),
       isRunning(false)
 {
     // ();
@@ -1013,7 +1051,7 @@ void ADS1299::updateChannelData(void)
 
     lastSampleTime = millis();
 
-    boolean downsample = true;
+    boolean downsample = false;
 
     updateBoardData(downsample);
     if (daisyPresent)
@@ -1060,13 +1098,13 @@ void ADS1299::updateBoardData(boolean downsample)
     byte inByte;
     int byteCounter = 0;
 
-    if ((daisyPresent) && !firstDataPacket && downsample)
-    {
-        for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
-        {                                                        // shift and average the byte arrays
-            lastBoardChannelDataInt[i] = boardChannelDataInt[i]; // remember the last samples
-        }
-    }
+    // if ((daisyPresent) && !firstDataPacket && downsample)
+    // {
+    //     for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
+    //     {                                                        // shift and average the byte arrays
+    //         lastBoardChannelDataInt[i] = boardChannelDataInt[i]; // remember the last samples
+    //     }
+    // }
 
     csLow(BOARD_ADS); //  open SPI
     for (int i = 0; i < 3; i++)
@@ -1081,39 +1119,39 @@ void ADS1299::updateBoardData(boolean downsample)
             inByte = xfer(0x00);
             boardChannelDataRaw[byteCounter] = inByte; // raw data goes here
             byteCounter++;
-            boardChannelDataInt[i] = (boardChannelDataInt[i] << 8) | inByte; // int data goes here
+            // boardChannelDataInt[i] = (boardChannelDataInt[i] << 8) | inByte; // int data goes here
         }
     }
     csHigh(BOARD_ADS); // close SPI
 
-    // need to convert 24bit to 32bit if using the filter
-    for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
-    { // convert 3 byte 2's compliment to 4 byte 2's compliment
-        if (bitRead(boardChannelDataInt[i], 23) == 1)
-        {
-            boardChannelDataInt[i] |= 0xFF000000;
-        }
-        else
-        {
-            boardChannelDataInt[i] &= 0x00FFFFFF;
-        }
-    }
-    if ((daisyPresent) && !firstDataPacket && downsample)
-    {
-        byteCounter = 0;
-        for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
-        { // take the average of this and the last sample
-            meanBoardChannelDataInt[i] = (lastBoardChannelDataInt[i] + boardChannelDataInt[i]) / 2;
-        }
-        for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
-        { // place the average values in the meanRaw array
-            for (int b = 2; b >= 0; b--)
-            {
-                meanBoardDataRaw[byteCounter] = (meanBoardChannelDataInt[i] >> (b * 8)) & 0xFF;
-                byteCounter++;
-            }
-        }
-    }
+    // // need to convert 24bit to 32bit if using the filter
+    // for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
+    // { // convert 3 byte 2's compliment to 4 byte 2's compliment
+    //     if (bitRead(boardChannelDataInt[i], 23) == 1)
+    //     {
+    //         boardChannelDataInt[i] |= 0xFF000000;
+    //     }
+    //     else
+    //     {
+    //         boardChannelDataInt[i] &= 0x00FFFFFF;
+    //     }
+    // }
+    // if ((daisyPresent) && !firstDataPacket && downsample)
+    // {
+    //     byteCounter = 0;
+    //     for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
+    //     { // take the average of this and the last sample
+    //         meanBoardChannelDataInt[i] = (lastBoardChannelDataInt[i] + boardChannelDataInt[i]) / 2;
+    //     }
+    //     for (int i = 0; i < OPENBCI_ADS_CHANS_PER_BOARD; i++)
+    //     { // place the average values in the meanRaw array
+    //         for (int b = 2; b >= 0; b--)
+    //         {
+    //             meanBoardDataRaw[byteCounter] = (meanBoardChannelDataInt[i] >> (b * 8)) & 0xFF;
+    //             byteCounter++;
+    //         }
+    //     }
+    // }
 
     if (firstDataPacket == true)
     {
@@ -1421,8 +1459,8 @@ void ADS1299::streamStart()
 /// @brief Start continuous data acquisition
 void ADS1299::startADS()
 {
-    sampleCounter = 0;
-    sampleCounterBLE = 0;
+    // sampleCounter = 0;
+    // sampleCounterBLE = 0;
     firstDataPacket = true;
     RDATAC(BOTH_ADS); // enter Read Data Continuous mode
     delay(1);

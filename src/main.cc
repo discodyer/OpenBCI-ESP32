@@ -31,8 +31,9 @@ void setup()
 
 void loop()
 {
-    if (ads1299.channelDataAvailable)
+    if (ads1299.streaming && ads1299.channelDataAvailable)
     {
+        // Read from the ADS(s), store data, set channelDataAvailable flag to false
         ads1299.updateChannelData();
         board.sendChannelDataWifi(false);
         if (ads1299.daisyPresent)

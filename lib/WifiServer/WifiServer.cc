@@ -1582,14 +1582,7 @@ void WifiServer::processIncomingChannelSettings(char character)
         _ads1299.channelSettings[currentChannelSetting][SRB1_SET] = optionalArgBuffer7[5];
 
         // Set channel settings
-        _ads1299.streamSafeChannelSettingsForChannel(
-            currentChannelSetting + 1,
-            _ads1299.channelSettings[currentChannelSetting][POWER_DOWN],
-            _ads1299.channelSettings[currentChannelSetting][GAIN_SET],
-            _ads1299.channelSettings[currentChannelSetting][INPUT_TYPE_SET],
-            _ads1299.channelSettings[currentChannelSetting][BIAS_SET],
-            _ads1299.channelSettings[currentChannelSetting][SRB2_SET],
-            _ads1299.channelSettings[currentChannelSetting][SRB1_SET]);
+        _ads1299.streamSafeChannelSettingsForChannel(currentChannelSetting + 1);
 
         // Reset
         numberOfIncomingSettingsProcessedChannel = 0;
@@ -1668,10 +1661,7 @@ void WifiServer::processIncomingLeadOffSettings(char character)
         _ads1299.leadOffSettings[currentChannelSetting][NCHAN] = optionalArgBuffer7[1];
 
         // Set lead off settings
-        _ads1299.streamSafeLeadOffSetForChannel(
-            currentChannelSetting + 1,
-            _ads1299.leadOffSettings[currentChannelSetting][PCHAN],
-            _ads1299.leadOffSettings[currentChannelSetting][NCHAN]);
+        _ads1299.streamSafeLeadOffSetForChannel(currentChannelSetting + 1);
 
         // reset numberOfIncomingSettingsProcessedLeadOff
         numberOfIncomingSettingsProcessedLeadOff = 0;
@@ -1886,7 +1876,22 @@ char WifiServer::getGainForAsciiChar(char asciiChar)
 
 void WifiServer::sendChannelDataWifi(boolean daisy)
 {
+    if (curPacketType == PACKET_TYPE_ACCEL)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            _ads1299.axisData[i] = 0;
+        }
+    }
+    if (curPacketType == PACKET_TYPE_RAW_AUX || curPacketType == PACKET_TYPE_RAW_AUX_TIME_SYNC)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            _ads1299.auxData[i] = 0; // reset auxData bytes to 0
+        }
+    }
     sendChannelDataWifi(curPacketType, daisy);
+    sampleCounter++;
 }
 
 /// @brief Writes channel data to wifi in the correct stream packet format.
@@ -1895,18 +1900,14 @@ void WifiServer::sendChannelDataWifi(boolean daisy)
 ///     Adds stop byte see `OpenBCI_32bit_Library.h` enum PACKET_TYPE
 void WifiServer::sendChannelDataWifi(PACKET_TYPE packetType, boolean daisy)
 {
-    uint8_t bufferTxPosition;
-    uint8_t bufferTx[32];
-
-    bufferTx[bufferTxPosition++] = (uint8_t)(PCKT_END | packetType);
-    bufferTx[bufferTxPosition++] = sampleCounter++;
-
+    storeByteBufTx((uint8_t)(PCKT_END | packetType)); // 1 byte
+    storeByteBufTx(sampleCounter);                    // 1 byte
     if (daisy)
     {
         // Send daisy
         for (int i = 0; i < 24; i++)
         {
-            bufferTx[bufferTxPosition++] = _ads1299.daisyChannelDataRaw[i];
+            storeByteBufTx(_ads1299.daisyChannelDataRaw[i]);
         }
     }
     else
@@ -1914,114 +1915,116 @@ void WifiServer::sendChannelDataWifi(PACKET_TYPE packetType, boolean daisy)
         // Send on board
         for (int i = 0; i < 24; i++)
         {
-            bufferTx[bufferTxPosition++] = _ads1299.boardChannelDataRaw[i];
+            storeByteBufTx(_ads1299.boardChannelDataRaw[i]);
         }
     }
 
     switch (packetType)
     {
     case PACKET_TYPE_ACCEL:
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[i]); // write 16 bit axis data MSB first
-            bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[i]);  // axisData is array of type short (16bit)
-        }
+        accelWriteAxisDataWifi(); // 6 bytes
         break;
-    }
     case PACKET_TYPE_ACCEL_TIME_SET:
-    { // send two bytes of either accel data or blank
-        uint8_t axis = 0;
-        switch (sampleCounter % 10)
-        {
-        case 0x07: // ACCEL_AXIS_X
-            axis = 0;
-            break;
-        case 0x08: // ACCEL_AXIS_Y
-            axis = 1;
-            break;
-        case 0x09: // ACCEL_AXIS_Z
-            axis = 2;
-            break;
-        default:
-            // wifi.storeByteBufTx((byte)0x00); // high byte
-            // wifi.storeByteBufTx((byte)0x00); // low byte
-            break;
-        }
-        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[axis]); // write 16 bit axis data MSB first
-        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[axis]);  // axisData is array of type short (16bit)
-
-        // serialize the number, placing the MSB in lower packets
-        for (int j = 3; j >= 0; j--)
-        {
-            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
-        }
+        sendTimeWithAccelWifi();
         curPacketType = PACKET_TYPE_ACCEL_TIME_SYNC;
         break;
-    }
     case PACKET_TYPE_ACCEL_TIME_SYNC:
-    { // send two bytes of either accel data or blank
-        uint8_t axis = 0;
-        switch (sampleCounter % 10)
-        {
-        case 0x07: // ACCEL_AXIS_X
-            axis = 0;
-            break;
-        case 0x08: // ACCEL_AXIS_Y
-            axis = 1;
-            break;
-        case 0x09: // ACCEL_AXIS_Z
-            axis = 2;
-            break;
-        default:
-            // wifi.storeByteBufTx((byte)0x00); // high byte
-            // wifi.storeByteBufTx((byte)0x00); // low byte
-            break;
-        }
-        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[axis]); // write 16 bit axis data MSB first
-        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[axis]);  // axisData is array of type short (16bit)
-        // serialize the number, placing the MSB in lower packets
-        for (int j = 3; j >= 0; j--)
-        {
-            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
-        }
+        sendTimeWithAccelWifi();
         break;
-    }
     case PACKET_TYPE_RAW_AUX_TIME_SET:
-    {
-        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[0]); // 2 bytes of aux data
-        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[0]);
-        // serialize the number, placing the MSB in lower packets
-        for (int j = 3; j >= 0; j--)
-        {
-            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
-        }
+        sendTimeWithRawAuxWifi();
         curPacketType = PACKET_TYPE_RAW_AUX_TIME_SYNC;
         break;
-    }
     case PACKET_TYPE_RAW_AUX_TIME_SYNC:
-    {
-        bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[0]); // 2 bytes of aux data
-        bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[0]);
-        // serialize the number, placing the MSB in lower packets
-        for (int j = 3; j >= 0; j--)
-        {
-            bufferTx[bufferTxPosition++] = ((uint8_t)(_ads1299.lastSampleTime >> (j * 8)));
-        }
+        sendTimeWithRawAuxWifi();
         break;
-    }
     case PACKET_TYPE_RAW_AUX:
     default:
-    {
-        for (int i = 0; i < 3; i++)
-        {
-            bufferTx[bufferTxPosition++] = highByte(_ads1299.axisData[i]); // write 16 bit axis data MSB first
-            bufferTx[bufferTxPosition++] = lowByte(_ads1299.axisData[i]);  // axisData is array of type short (16bit)
-        }
+        writeAuxDataWifi(); // 6 bytes
         break;
     }
-    }
 
+    flushBufferTx();
+}
+
+void WifiServer::writeAuxDataWifi(void)
+{
+    for (int i = 0; i < 3; i++)
+    {
+        storeByteBufTx((uint8_t)highByte(_ads1299.auxData[i])); // write 16 bit axis data MSB first
+        storeByteBufTx((uint8_t)lowByte(_ads1299.auxData[i]));  // axisData is array of type short (16bit)
+    }
+}
+
+/// @brief Writes channel data, `auxData[0]` 2 bytes, and 4 byte unsigned
+///         time stamp in ms to serial port in the correct stream packet format.
+/// @param
+void WifiServer::sendTimeWithRawAuxWifi(void)
+{
+    storeByteBufTx(highByte(_ads1299.auxData[0])); // 2 bytes of aux data
+    storeByteBufTx(lowByte(_ads1299.auxData[0]));
+    writeTimeCurrentWifi(_ads1299.lastSampleTime); // 4 bytes
+}
+
+/// @brief Reads from the accelerometer to get new X, Y, and Z data.
+/// @param
+void WifiServer::accelWriteAxisDataWifi(void)
+{
+    LIS3DH_writeAxisDataWifi();
+}
+
+/// @brief USE_WIFI
+/// @param
+void WifiServer::LIS3DH_writeAxisDataWifi(void)
+{
+    for (int i = 0; i < 3; i++)
+    {
+        storeByteBufTx(highByte(_ads1299.axisData[i])); // write 16 bit axis data MSB first
+        storeByteBufTx(lowByte(_ads1299.axisData[i]));  // axisData is array of type short (16bit)
+    }
+}
+
+void WifiServer::sendTimeWithAccelWifi(void)
+{
+    // send two bytes of either accel data or blank
+    switch (sampleCounter % 10)
+    {
+    case ACCEL_AXIS_X: // 7
+        LIS3DH_writeAxisDataForAxisWifi(0);
+        break;
+    case ACCEL_AXIS_Y: // 8
+        LIS3DH_writeAxisDataForAxisWifi(1);
+        break;
+    case ACCEL_AXIS_Z: // 9
+        LIS3DH_writeAxisDataForAxisWifi(2);
+        break;
+    default:
+        storeByteBufTx((byte)0x00); // high byte
+        storeByteBufTx((byte)0x00); // low byte
+        break;
+    }
+    writeTimeCurrentWifi(_ads1299.lastSampleTime); // 4 bytes
+}
+
+void WifiServer::LIS3DH_writeAxisDataForAxisWifi(uint8_t axis)
+{
+    if (axis > 2)
+        axis = 0;
+    storeByteBufTx(highByte(_ads1299.axisData[axis])); // write 16 bit axis data MSB first
+    storeByteBufTx(lowByte(_ads1299.axisData[axis]));  // axisData is array of type short (16bit)
+}
+
+void WifiServer::writeTimeCurrentWifi(uint32_t newTime)
+{
+    // serialize the number, placing the MSB in lower packets
+    for (int j = 3; j >= 0; j--)
+    {
+        storeByteBufTx((uint8_t)(newTime >> (j * 8)));
+    }
+}
+
+void WifiServer::flushBufferTx()
+{
     int newHead = rawBufferHead + 1;
     if (newHead >= NUM_PACKETS_IN_RING_BUFFER_RAW)
     {
@@ -2029,6 +2032,25 @@ void WifiServer::sendChannelDataWifi(PACKET_TYPE packetType, boolean daisy)
     }
     memcpy(rawBuffer + newHead, bufferTx, BYTES_PER_SPI_PACKET);
     rawBufferHead = newHead;
+    bufferTxPosition = 0;
+}
+
+boolean WifiServer::storeByteBufTx(uint8_t b)
+{
+    if (bufferTxPosition >= 32)
+        return false;
+    bufferTx[bufferTxPosition] = b;
+    bufferTxPosition++;
+    return true;
+}
+
+void WifiServer::bufferTxClear()
+{
+    for (uint8_t i = 0; i < 32; i++)
+    {
+        bufferTx[i] = 0;
+    }
+    bufferTxPosition = 0;
 }
 
 /// @brief Check for valid on multi char commands
@@ -2089,6 +2111,8 @@ void WifiServer::initVariables(void)
     curPacketType = PACKET_TYPE_ACCEL;
     curTimeSyncMode = TIME_SYNC_MODE_OFF;
     curAccelMode = ACCEL_MODE_OFF;
+
+    bufferTxClear();
 }
 
 /// @brief Initalize arrays here

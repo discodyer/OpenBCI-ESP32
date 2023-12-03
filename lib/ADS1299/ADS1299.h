@@ -42,8 +42,8 @@ public:
     byte leadOffSettings[OPENBCI_NUMBER_OF_CHANNELS_DAISY][OPENBCI_NUMBER_OF_LEAD_OFF_SETTINGS]; // used to control on/off of impedance measure for P and N side of each channel
     byte meanBoardDataRaw[OPENBCI_NUMBER_BYTES_PER_ADS_SAMPLE];
     byte meanDaisyDataRaw[OPENBCI_NUMBER_BYTES_PER_ADS_SAMPLE];
-    byte sampleCounter;
-    byte sampleCounterBLE;
+    // byte sampleCounter;
+    // byte sampleCounterBLE;
 
     int boardChannelDataInt[OPENBCI_NUMBER_CHANNELS_PER_ADS_SAMPLE]; // array used when reading channel data as ints
     int daisyChannelDataInt[OPENBCI_NUMBER_CHANNELS_PER_ADS_SAMPLE]; // array used when reading channel data as ints
@@ -107,7 +107,9 @@ public:
     void setChannelsToDefault(void);
     void removeDaisy(void);
     void streamSafeChannelSettingsForChannel(byte channelNumber, byte powerDown, byte gain, byte inputType, byte bias, byte srb2, byte srb1);
+    void streamSafeChannelSettingsForChannel(byte channelNumber);
     void streamSafeLeadOffSetForChannel(byte channelNumber, byte pInput, byte nInput);
+    void streamSafeLeadOffSetForChannel(byte channelNumber);
     void streamSafeSetSampleRate(SAMPLE_RATE sr);
     char getDefaultChannelSettingForSettingAscii(byte setting);
     byte getDefaultChannelSettingForSetting(byte setting);
